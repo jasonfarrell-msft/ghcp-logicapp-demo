@@ -1,0 +1,23 @@
+### Approval request — replace {{triggerUrl}} with the URL from the deployed Logic App's HTTP trigger.
+@triggerUrl = https://prod-00.eastus.logic.azure.com/workflows/REPLACE/triggers/When_an_approval_request_is_received/paths/invoke?api-version=2016-10-01&sp=...&sv=...&sig=...
+
+POST {{triggerUrl}}
+Content-Type: application/json
+
+{
+  "requestId": "REQ-1001",
+  "requester": "alice@contoso.com",
+  "amount": 2500,
+  "description": "New laptop for engineering hire"
+}
+
+### Below-threshold request (auto-approved)
+POST {{triggerUrl}}
+Content-Type: application/json
+
+{
+  "requestId": "REQ-1002",
+  "requester": "bob@contoso.com",
+  "amount": 250,
+  "description": "Office supplies"
+}
