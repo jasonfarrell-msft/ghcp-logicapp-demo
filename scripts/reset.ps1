@@ -17,5 +17,7 @@ finally {
     Pop-Location
 }
 
-Write-Host "Re-deploying baseline ($Environment)..." -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot 'deploy.ps1') -Environment $Environment
+$rgName = "rg-ghcp-logicapp-$Environment"
+Write-Host "Deleting resource group $rgName..." -ForegroundColor Cyan
+az group delete --name $rgName --yes --no-wait
+Write-Host "Resource group $rgName deletion initiated." -ForegroundColor Green

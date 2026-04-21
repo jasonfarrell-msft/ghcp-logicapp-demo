@@ -42,11 +42,14 @@ sits next to the response logic.
 
 ## Prompt to give Copilot
 > Open `infra/workflows/approval.workflow.json`. Refactor the workflow so that:
-> 1. Variable initialization is grouped into a `Scope` named `Initialize`.
+> 1. `InitializeVariable` actions stay at the **root** level of `actions`
+>    (Logic Apps forbids `InitializeVariable` inside a `Scope`). Keep them
+>    chained at the top.
 > 2. The approval-email + switch logic is grouped into a `Scope` named
->    `RequestApproval`.
-> 3. The HTTP responses are grouped into a `Scope` named `Respond`.
-> 4. Update `runAfter` chains so the scopes run in order.
+>    `RequestApproval`, with `runAfter` pointing to the last init variable.
+> 3. The HTTP responses are grouped into a `Scope` named `Respond`, with
+>    `runAfter` pointing to `RequestApproval`.
+> 4. Update `runAfter` chains so the actions run in order.
 > 5. Mirror the same change inside `infra/modules/logicApp.bicep` so the inline
 >    definition stays in sync.
 > Show me a single diff covering both files and explain the trade-offs.
