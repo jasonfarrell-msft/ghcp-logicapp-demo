@@ -1,27 +1,9 @@
 # Scenario 05 — Explain & document
 
-**Goal:** Generate human-readable documentation and a Mermaid diagram from the
-workflow JSON — the kind of asset that's painful to maintain manually.
+**Goal:** Generate a plain-English summary, a Mermaid diagram, and an action table from the workflow JSON — the kind of artefact teams rarely keep current by hand.
 
-## Demo loop
-This scenario doesn't change deployed behavior — it produces docs. The
-"deploy" step still matters: it grounds the audience in what actually exists
-in Azure before Copilot describes it.
+## Prompt
 
-1. **Deploy baseline** (or confirm already deployed):
-   `./scripts/deploy.ps1 -Environment dev`.
-2. **Show the deployed workflow** in the portal — designer view, point out
-   how much clicking it takes to "understand" it.
-3. **Generate docs** using the prompts below.
-4. **Open `docs/approval-workflow.md`** side-by-side with the portal — same
-   information, version-controlled, reviewable in a PR.
-5. **No redeploy needed.** Reset with `./scripts/reset.ps1 -Environment dev`
-   before the next scenario.
-
-## Setup
-No documentation exists for the approval workflow.
-
-## Prompts to give Copilot
 > Read `infra/workflows/approval.workflow.json` and produce:
 > 1. A concise plain-English summary (max 8 bullets) of what the workflow
 >    does, including trigger, branches, and outputs.
@@ -31,17 +13,26 @@ No documentation exists for the approval workflow.
 >    `Depends on`, `Notes`.
 > Save the result to `docs/approval-workflow.md`.
 
-Follow-up prompt:
+**Follow-up prompt** (seeds the rest of the demo arc):
+
 > Now review the workflow for issues: missing error handling, hard-coded
 > values, missing retries, opportunities for parallelism, security concerns
 > with the trigger SAS. List findings with severity (high/medium/low) and a
 > one-line fix for each.
 
-## Talking points
-- Copilot turns opaque JSON into reviewable docs in seconds.
-- The "review for issues" prompt seeds the next demo (scenario 03 / 06).
-- Mermaid renders inline in GitHub — no extra tooling.
+## What changes
+- New `docs/approval-workflow.md` with summary + Mermaid + action table.
+- Inline issue list in chat — naturally previews scenarios 02, 03, and 06.
+- No deployment change.
 
-## Expected outcome
-- New `docs/approval-workflow.md` with summary, diagram, action table.
-- Inline issue list in the chat with prioritized fixes.
+## Verify
+
+Open `docs/approval-workflow.md` side-by-side with the portal designer view. Same information, version-controlled, reviewable in a PR. Mermaid renders inline on GitHub — no extra tooling required.
+
+## Talking points
+- Opaque JSON → reviewable docs in seconds.
+- The "review for issues" prompt seeds the rest of the demo arc.
+- Mermaid renders inline on GitHub — no extra tooling.
+
+---
+**Redeploy:** not needed (this scenario is docs-only).

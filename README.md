@@ -2,8 +2,8 @@
 
 A small, opinionated repo for **showcasing the value of GitHub Copilot when
 authoring and maintaining Azure Logic Apps (Consumption)**. It contains a
-working skeleton workflow plus a set of pre-scripted "scenarios" you can run
-live in front of an audience.
+working skeleton workflow, the Bicep that deploys it, and a set of
+pre-scripted scenarios you can run live.
 
 > **Why this exists.** Logic App definitions are JSON-heavy, full of subtle
 > conventions (`runAfter`, `$connections`, scope semantics), and changes often
@@ -11,19 +11,27 @@ live in front of an audience.
 > files. This is exactly the kind of cross-cutting, schema-bound work where
 > Copilot shines.
 
+## Running the demo
+
+👉 **See [`DEMO.md`](./DEMO.md).** It contains the presenter script:
+pre-flight checklist, scenario order with talking points, and an "if
+something breaks" guide. This README only covers what the repo *is* and how
+to set it up.
+
 ## Repo layout
 
 ```
 infra/
-├── main.bicep                   # subscription-scoped entry point
-├── modules/logicApp.bicep       # Logic App + connectors + inline definition
+├── main.bicep                       # subscription-scoped entry point
+├── modules/logicApp.bicep           # Logic App + connectors + inline definition
 ├── parameters/{dev,prod}.bicepparam
-└── workflows/approval.workflow.json   # standalone copy of the definition
-samples/approval-request.http    # ready-to-send sample payloads
-scripts/deploy.ps1               # az deployment wrapper
-scripts/invoke.ps1               # POST a sample to the trigger URL (auto-fetches the URL)
-scripts/reset.ps1                # git restore + redeploy baseline (between scenarios)
-scenarios/                       # demo scripts (1 per markdown file)
+└── workflows/approval.workflow.json # standalone copy of the definition
+samples/approval-request.http        # ready-to-send sample payloads
+scripts/deploy.ps1                   # az deployment wrapper
+scripts/invoke.ps1                   # POST a sample to the trigger URL (auto-fetches the URL)
+scripts/reset.ps1                    # git restore + delete the resource group
+scenarios/                           # one markdown file per scenario
+DEMO.md                              # presenter script
 ```
 
 ## The skeleton workflow
@@ -48,42 +56,37 @@ one of those gaps live.**
 - VS Code with the **REST Client** extension (optional, for `samples/*.http`)
 - GitHub Copilot Chat / CLI
 
-## Deploy
+## One-time setup
 
 ```powershell
-# Validate
+# Validate Bicep
 az bicep build --file infra/main.bicep
 
-# Deploy dev
+# Deploy dev baseline
 ./scripts/deploy.ps1 -Environment dev
+
+# Smoke test (skips the Office 365 connector — no auth required yet):
+./scripts/invoke.ps1 -Environment dev -Amount 100
 ```
 
-After deployment, open the Logic App in the Azure Portal and **authorize the
-Office 365 / Teams connections** (the demo deploys them un-authorized to keep
-deployments fast and credential-free).
+✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
 
-> **Smoke test without authorizing the connector:** invoke with an amount
-> below the threshold — it skips the approval-email branch entirely and
-> returns `auto-approved`. Great first sanity check after deploy:
-> ```powershell
-> ./scripts/invoke.ps1 -Environment dev -Amount 100
-> ```
-> Above-threshold invokes will return **502** until the Office 365 connection
-> is authorized in the portal.
+To exercise the full approval path (`-Amount 2500` and above), authorize the
+Office 365 connection **once** in the portal: Logic App → API connections →
+`con-office365-dev` → **Edit API connection** → **Authorize**. The
+authorization survives redeploys.
 
 ## Invoke
-
-Just run:
 
 ```powershell
 ./scripts/invoke.ps1 -Environment dev -Amount 2500
 ```
 
-The script fetches the trigger URL from Azure for you — **no copy/paste**.
+The script fetches the trigger URL from Azure for you — no copy/paste.
 
-If you do want to pass a URL explicitly (e.g., from another subscription),
-**always wrap it in single quotes** — `&` is a command separator in
-PowerShell and an unquoted URL gets silently truncated, causing 401s:
+If you do pass a URL explicitly, **wrap it in single quotes** — `&` is a
+command separator in PowerShell and an unquoted URL gets silently truncated,
+causing 401s:
 
 ```powershell
 ./scripts/invoke.ps1 -TriggerUrl 'https://...&sig=...'
@@ -91,50 +94,28 @@ PowerShell and an unquoted URL gets silently truncated, causing 401s:
 
 …or use `samples/approval-request.http` in VS Code.
 
-## Demo scenarios
+## Reset
 
-Each file under `scenarios/` is a self-contained ~5-minute demo. Recommended
-order:
+⚠️ `./scripts/reset.ps1 -Environment dev` runs `git restore .` **and deletes
+the resource group**. It does **not** redeploy. Use it at the end of the
+demo, not between scenarios. To start fresh after a reset, redeploy:
+
+```powershell
+./scripts/deploy.ps1 -Environment dev
+```
+
+## Scenarios at a glance
 
 | # | Scenario | What it shows |
 |---|---|---|
-| 01 | Refactor: extract sub-flows **(primary)** | Copilot reasons over `Scope`/`runAfter` |
+| 01 | Refactor: extract sub-flows | Copilot reasons over `Scope`/`runAfter` |
 | 02 | Parameterize hard-coded values | Workflow `parameters` vs `variables` |
 | 03 | Add error handling | `retryPolicy`, failure scopes, dead-letter |
 | 04 | Add an escalation branch | Cross-file IaC consistency |
 | 05 | Explain & document | Mermaid + plain-English from JSON |
 | 06 | Add Teams notification | Wiring a new connector end-to-end |
-| 07 | Migrate Consumption → Standard | Cross-cutting refactor: IaC, workflow schema, connections, local dev |
+| 07 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
 
-## The demo loop (every scenario)
-
-Each scenario follows the same **deploy → refactor → redeploy → verify**
-loop. This is the core narrative: Copilot doesn't just edit text, it
-changes what's running in Azure.
-
-```
-1. Deploy baseline       ./scripts/deploy.ps1 -Environment dev
-2. Show current behavior ./scripts/invoke.ps1 -Environment dev
-3. Refactor with Copilot (paste the scenario's prompt)
-4. Validate locally       az bicep build --file infra/main.bicep
-5. Redeploy (in-place)    ./scripts/deploy.ps1 -Environment dev
-6. Re-invoke              ./scripts/invoke.ps1 -Environment dev
-7. Reset for next demo    ./scripts/reset.ps1 -Environment dev
-```
-
-Notes:
-- **Bicep is idempotent** — redeploying to the same RG updates the workflow
-  in place. The trigger URL stays the same across redeploys.
-- **`scripts/reset.ps1`** restores the working tree to baseline and
-  redeploys, so each scenario starts clean.
-- **Connector authorization** is a one-time per-environment step done in the
-  portal — it survives redeploys.
-
-## Demo tips
-
-- **Open both files** before each scenario: `infra/workflows/approval.workflow.json`
-  and `infra/modules/logicApp.bicep`. The "keep them in sync" angle is one of
-  Copilot's strongest stories here.
-- **Run `az bicep build` after every scenario** as the validation gate — it's
-  a clean way to show the change is real and well-formed.
-- Reset between demos with `./scripts/reset.ps1`.
+The presenter order in [`DEMO.md`](./DEMO.md) is **not** `01 → 07` — it
+opens with `05` (explain) and ends with `07` (migrate). See that file for the
+narrative arc.

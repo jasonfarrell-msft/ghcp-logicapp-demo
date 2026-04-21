@@ -1,27 +1,9 @@
 # Scenario 03 — Add error handling
 
-**Goal:** Make the workflow resilient to connector failures by adding retry
-policies, a failure scope, and a dead-letter HTTP call.
+**Goal:** Make the workflow resilient: retry policy on the connector call, a `HandleFailure` scope, a dead-letter POST, and a 502 response so callers see the failure.
 
-## Demo loop
-1. **Deploy baseline:** `./scripts/deploy.ps1 -Environment dev`.
-2. **Force a failure first** (optional but powerful) — invoke the trigger
-   *before* authorizing the Office 365 connection in the portal. The run
-   fails ungracefully. This is your "before" picture.
-3. **Refactor** with the prompt below.
-4. **Validate:** `az bicep build --file infra/main.bicep`.
-5. **Redeploy:** `./scripts/deploy.ps1 -Environment dev`.
-6. **Re-invoke** without authorizing the connector — now the run hits
-   `HandleFailure`, posts the dead-letter, and returns `502`. Show the
-   `HandleFailure` scope in the portal run history.
-7. **Reset:** `./scripts/reset.ps1 -Environment dev`.
+## Prompt
 
-## Setup
-The skeleton has no retry configuration on `Send_approval_email` and no
-`runAfter: failed` handler. A transient Office 365 connector failure would
-crash the run and return nothing to the caller.
-
-## Prompt to give Copilot
 > In `infra/workflows/approval.workflow.json`:
 > 1. Add a `retryPolicy` to `Send_approval_email` (exponential, 4 retries,
 >    PT10S minimum interval).
@@ -33,13 +15,28 @@ crash the run and return nothing to the caller.
 > 4. Add a final `Response` returning `502` so the caller sees the failure.
 > Mirror the same changes in `infra/modules/logicApp.bicep`.
 
-## Talking points
-- Copilot correctly expresses `runAfter` with multiple statuses
-  (`["Failed","TimedOut","Skipped"]`) — easy to get wrong by hand.
-- `retryPolicy` JSON structure is fully generated.
-- The dead-letter pattern transfers cleanly to other workflows.
+## What changes
+- `Send_approval_email` gains an exponential `retryPolicy`.
+- New `HandleFailure` scope wired with `runAfter` on `["Failed","TimedOut"]`.
+- Dead-letter HTTP POST + 502 `Response` action inside the failure scope.
+- Same edits mirrored in the Bicep inline definition.
 
-## Expected outcome
-- `Send_approval_email` has a `retryPolicy` of type `exponential`.
-- New `HandleFailure` scope with proper `runAfter`.
-- Dead-letter HTTP action + 502 response.
+## Verify
+
+```powershell
+az bicep build --file infra/main.bicep
+./scripts/deploy.ps1 -Environment dev
+# Force a failure: invoke BEFORE the Office 365 connection is authorized
+# (or temporarily de-authorize it in the portal).
+./scripts/invoke.ps1 -Environment dev -Amount 2500
+```
+
+✅ Expected: `HTTP 502` (graceful) instead of an opaque crash. Portal run history shows `HandleFailure` executed and the dead-letter POST attempted.
+
+## Talking points
+- `runAfter` with multiple statuses (`["Failed","TimedOut","Skipped"]`) is easy to mistype by hand — Copilot gets it right.
+- The `retryPolicy` JSON shape is fully generated.
+- Dead-letter pattern transfers cleanly to other workflows.
+
+---
+**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).

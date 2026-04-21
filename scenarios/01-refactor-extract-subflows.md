@@ -1,46 +1,9 @@
-# Scenario 01 — Refactor: extract sub-flows (PRIMARY)
+# Scenario 01 — Refactor: extract sub-flows
 
-**Goal:** Show how Copilot can safely refactor a flat workflow into well-named
-`Scope` blocks, making the workflow easier to read, test, and extend.
+**Goal:** Refactor a flat workflow into well-named `Scope` blocks for readability and testability — keeping the standalone JSON and the Bicep mirror in sync.
 
-## Demo loop
-1. **Deploy baseline** (skip if already deployed):
-   ```powershell
-   ./scripts/deploy.ps1 -Environment dev
-   ```
-2. **Smoke test** (no connector auth required — exercises the auto-approved branch):
-   ```powershell
-   ./scripts/invoke.ps1 -Environment dev -Amount 100
-   ```
-   Expected: `HTTP 200 OK` with `"status":"auto-approved"`.
+## Prompt
 
-   *Optional — full approval path:* requires authorizing the Office 365
-   connection once in the portal (Logic App → API connections →
-   `con-office365-dev` → Edit API connection → Authorize). Then:
-   ```powershell
-   ./scripts/invoke.ps1 -Environment dev -Amount 2500
-   ```
-3. **Refactor** — give Copilot the prompt below.
-4. **Validate** locally:
-   ```powershell
-   az bicep build --file infra/main.bicep
-   ```
-5. **Redeploy** the same RG — Bicep is idempotent, so this is an in-place
-   update of the workflow definition:
-   ```powershell
-   ./scripts/deploy.ps1 -Environment dev
-   ```
-6. **Re-invoke** with the same command from step 2 — same input, same output,
-   cleaner shape. Show the run history in the portal: scopes are now visible
-   as collapsible groups.
-7. **Reset** before the next demo: `./scripts/reset.ps1 -Environment dev`.
-
-## Setup
-The skeleton in `infra/workflows/approval.workflow.json` has all actions at the
-root level. There is no grouping, no naming convention, and the connector call
-sits next to the response logic.
-
-## Prompt to give Copilot
 > Open `infra/workflows/approval.workflow.json`. Refactor the workflow so that:
 > 1. `InitializeVariable` actions stay at the **root** level of `actions`
 >    (Logic Apps forbids `InitializeVariable` inside a `Scope`). Keep them
@@ -54,13 +17,27 @@ sits next to the response logic.
 >    definition stays in sync.
 > Show me a single diff covering both files and explain the trade-offs.
 
-## Talking points
-- Copilot understands Logic Apps' `Scope` action and `runAfter` semantics.
-- It keeps the JSON and Bicep mirror **in sync** in one pass — a manual
-  refactor would risk drift.
-- Reviewer can validate by running `az bicep build infra/main.bicep`.
+## What changes
+- Three root-level actions: the `InitializeVariable` chain, then `Scope: RequestApproval`, then `Scope: Respond`.
+- Original child actions move inside the appropriate scope.
+- `runAfter` chain becomes `Initialize` → `RequestApproval` → `Respond`.
+- The same edits land in the inline definition inside `infra/modules/logicApp.bicep`.
 
-## Expected outcome
-- Three new `Scope` actions at the root of `actions`.
-- Original child actions moved inside the appropriate scope.
-- `runAfter` chain: `Initialize` → `RequestApproval` → `Respond`.
+## Verify
+
+```powershell
+az bicep build --file infra/main.bicep
+./scripts/deploy.ps1 -Environment dev
+./scripts/invoke.ps1 -Environment dev -Amount 100
+```
+
+✅ Expected: `HTTP 200 OK` with `"status":"auto-approved"`. Same input as baseline, cleaner shape. In the portal run history the scopes now appear as collapsible groups.
+
+## Talking points
+- Copilot understands Logic Apps `Scope` and `runAfter` semantics.
+- It edits the JSON and the Bicep mirror **in sync** in one pass — a manual refactor would drift.
+- ⚠️ **Consumption gotcha:** `InitializeVariable` is illegal inside a `Scope`. If Copilot nests them you get `InvalidVariableInitialization` at deploy time. Worth calling out — the prompt explicitly steers Copilot around this.
+- `az bicep build` is the cheap validation gate before redeploying.
+
+---
+**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).
