@@ -5,6 +5,30 @@
     "$connections": {
       "defaultValue": {},
       "type": "Object"
+    },
+    "approverEmail": {
+      "type": "String",
+      "defaultValue": "approver@contoso.com"
+    },
+    "threshold": {
+      "type": "Int",
+      "defaultValue": 1000
+    },
+    "escalationApproverEmail": {
+      "type": "String",
+      "defaultValue": "escalation@contoso.com"
+    },
+    "escalationThreshold": {
+      "type": "Int",
+      "defaultValue": 10000
+    },
+    "teamsChannelId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "teamsGroupId": {
+      "type": "String",
+      "defaultValue": ""
     }
   },
   "triggers": {
@@ -26,111 +50,225 @@
     }
   },
   "actions": {
-    "Initialize_approverEmail": {
-      "type": "InitializeVariable",
-      "inputs": {
-        "variables": [
-          { "name": "approverEmail", "type": "string", "value": "approver@contoso.com" }
-        ]
+    "RequestApproval": {
+      "type": "Scope",
+      "actions": {
+        "Check_escalation_threshold": {
+          "type": "If",
+          "expression": {
+            "and": [
+              { "greater": [ "@triggerBody()?['amount']", "@parameters('escalationThreshold')" ] }
+            ]
+          },
+          "actions": {
+            "Send_escalation_email": {
+              "type": "ApiConnectionWebhook",
+              "inputs": {
+                "host": {
+                  "connection": { "name": "@parameters('$connections')['office365']['connectionId']" }
+                },
+                "path": "/approvalmail/$subscriptions",
+                "body": {
+                  "NotificationUrl": "@{listCallbackUrl()}",
+                  "Message": {
+                    "To": "@parameters('escalationApproverEmail')",
+                    "Subject": "ESCALATION: high-value approval needed for @{triggerBody()?['requestId']}",
+                    "Options": "Approve, Reject",
+                    "Body": "Requester: @{triggerBody()?['requester']}\nAmount: @{triggerBody()?['amount']}\nDescription: @{triggerBody()?['description']}"
+                  }
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT10S"
+                }
+              },
+              "runAfter": {}
+            },
+            "Switch_on_escalation_response": {
+              "type": "Switch",
+              "expression": "@body('Send_escalation_email')?['SelectedOption']",
+              "cases": {
+                "Approve": {
+                  "case": "Approve",
+                  "actions": {}
+                },
+                "Reject": {
+                  "case": "Reject",
+                  "actions": {
+                    "Respond_escalation_denied": {
+                      "type": "Response",
+                      "kind": "Http",
+                      "inputs": {
+                        "statusCode": 403,
+                        "body": {
+                          "requestId": "@triggerBody()?['requestId']",
+                          "status": "escalation-denied"
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Terminate_after_escalation_denied": {
+                      "type": "Terminate",
+                      "inputs": {
+                        "runStatus": "Cancelled"
+                      },
+                      "runAfter": { "Respond_escalation_denied": [ "Succeeded" ] }
+                    }
+                  }
+                }
+              },
+              "default": { "actions": {} },
+              "runAfter": { "Send_escalation_email": [ "Succeeded" ] }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {}
+        },
+        "Check_amount_against_threshold": {
+          "type": "If",
+          "expression": {
+            "and": [
+              { "greater": [ "@triggerBody()?['amount']", "@parameters('threshold')" ] }
+            ]
+          },
+          "actions": {
+            "Send_approval_email": {
+              "type": "ApiConnectionWebhook",
+              "inputs": {
+                "host": {
+                  "connection": { "name": "@parameters('$connections')['office365']['connectionId']" }
+                },
+                "path": "/approvalmail/$subscriptions",
+                "body": {
+                  "NotificationUrl": "@{listCallbackUrl()}",
+                  "Message": {
+                    "To": "@parameters('approverEmail')",
+                    "Subject": "Approval needed for request @{triggerBody()?['requestId']}",
+                    "Options": "Approve, Reject",
+                    "Body": "Requester: @{triggerBody()?['requester']}\nAmount: @{triggerBody()?['amount']}\nDescription: @{triggerBody()?['description']}"
+                  }
+                },
+                "retryPolicy": {
+                  "type": "exponential",
+                  "count": 4,
+                  "interval": "PT10S"
+                }
+              },
+              "runAfter": {}
+            },
+            "Switch_on_approver_response": {
+              "type": "Switch",
+              "expression": "@body('Send_approval_email')?['SelectedOption']",
+              "cases": {
+                "Approve": {
+                  "case": "Approve",
+                  "actions": {
+                    "Respond_approved": {
+                      "type": "Response",
+                      "kind": "Http",
+                      "inputs": {
+                        "statusCode": 200,
+                        "body": {
+                          "requestId": "@triggerBody()?['requestId']",
+                          "status": "approved"
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Post_adaptive_card_to_Teams": {
+                      "type": "ApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connection": { "name": "@parameters('$connections')['teams']['connectionId']" }
+                        },
+                        "method": "post",
+                        "path": "/v1.0/teams/conversation/adaptivecard/poster/Flow bot/location/@{encodeURIComponent(encodeURIComponent(json(concat('{\"groupId\":\"',parameters('teamsGroupId'),'\",\"channelId\":\"',parameters('teamsChannelId'),'\"}'))))}",
+                        "body": {
+                          "messageBody": "{\"type\":\"AdaptiveCard\",\"$schema\":\"http://adaptivecards.io/schemas/adaptive-card.json\",\"version\":\"1.4\",\"body\":[{\"type\":\"TextBlock\",\"size\":\"Medium\",\"weight\":\"Bolder\",\"text\":\"Approval granted\"},{\"type\":\"FactSet\",\"facts\":[{\"title\":\"Request\",\"value\":\"@{triggerBody()?['requestId']}\"},{\"title\":\"Requester\",\"value\":\"@{triggerBody()?['requester']}\"},{\"title\":\"Amount\",\"value\":\"@{triggerBody()?['amount']}\"},{\"title\":\"Description\",\"value\":\"@{triggerBody()?['description']}\"}]}],\"actions\":[{\"type\":\"Action.OpenUrl\",\"title\":\"View run\",\"url\":\"@{concat('https://portal.azure.com/#resource', workflow().id, '/runs/', workflow().run.name)}\"}]}"
+                        }
+                      },
+                      "runAfter": { "Respond_approved": [ "Succeeded" ] }
+                    }
+                  }
+                },
+                "Reject": {
+                  "case": "Reject",
+                  "actions": {
+                    "Respond_rejected": {
+                      "type": "Response",
+                      "kind": "Http",
+                      "inputs": {
+                        "statusCode": 200,
+                        "body": {
+                          "requestId": "@triggerBody()?['requestId']",
+                          "status": "rejected"
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  }
+                }
+              },
+              "default": { "actions": {} },
+              "runAfter": { "Send_approval_email": [ "Succeeded" ] }
+            }
+          },
+          "else": {
+            "actions": {
+              "Respond_auto_approved": {
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                  "statusCode": 200,
+                  "body": {
+                    "requestId": "@triggerBody()?['requestId']",
+                    "status": "auto-approved"
+                  }
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": { "Check_escalation_threshold": [ "Succeeded" ] }
+        }
       },
       "runAfter": {}
     },
-    "Initialize_threshold": {
-      "type": "InitializeVariable",
-      "inputs": {
-        "variables": [
-          { "name": "threshold", "type": "integer", "value": 1000 }
-        ]
-      },
-      "runAfter": { "Initialize_approverEmail": [ "Succeeded" ] }
-    },
-    "Check_amount_against_threshold": {
-      "type": "If",
-      "expression": {
-        "and": [
-          { "greater": [ "@triggerBody()?['amount']", "@variables('threshold')" ] }
-        ]
-      },
+    "HandleFailure": {
+      "type": "Scope",
       "actions": {
-        "Send_approval_email": {
-          "type": "ApiConnectionWebhook",
+        "Dead_letter_post": {
+          "type": "Http",
           "inputs": {
-            "host": {
-              "connection": { "name": "@parameters('$connections')['office365']['connectionId']" }
-            },
-            "path": "/approvalmail/$subscriptions",
+            "method": "POST",
+            "uri": "https://example.com/dead-letter",
+            "headers": { "Content-Type": "application/json" },
             "body": {
-              "NotificationUrl": "@{listCallbackUrl()}",
-              "Message": {
-                "To": "@variables('approverEmail')",
-                "Subject": "Approval needed for request @{triggerBody()?['requestId']}",
-                "Options": "Approve, Reject",
-                "Body": "Requester: @{triggerBody()?['requester']}\nAmount: @{triggerBody()?['amount']}\nDescription: @{triggerBody()?['description']}"
-              }
+              "runId": "@{workflow().run.id}",
+              "workflowName": "@{workflow().name}",
+              "trigger": "@triggerBody()"
             }
           },
           "runAfter": {}
         },
-        "Switch_on_approver_response": {
-          "type": "Switch",
-          "expression": "@body('Send_approval_email')?['SelectedOption']",
-          "cases": {
-            "Approve": {
-              "case": "Approve",
-              "actions": {
-                "Respond_approved": {
-                  "type": "Response",
-                  "kind": "Http",
-                  "inputs": {
-                    "statusCode": 200,
-                    "body": {
-                      "requestId": "@triggerBody()?['requestId']",
-                      "status": "approved"
-                    }
-                  },
-                  "runAfter": {}
-                }
-              }
-            },
-            "Reject": {
-              "case": "Reject",
-              "actions": {
-                "Respond_rejected": {
-                  "type": "Response",
-                  "kind": "Http",
-                  "inputs": {
-                    "statusCode": 200,
-                    "body": {
-                      "requestId": "@triggerBody()?['requestId']",
-                      "status": "rejected"
-                    }
-                  },
-                  "runAfter": {}
-                }
-              }
+        "Respond_502": {
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 502,
+            "body": {
+              "requestId": "@triggerBody()?['requestId']",
+              "status": "approval-failed",
+              "runId": "@{workflow().run.id}"
             }
           },
-          "default": { "actions": {} },
-          "runAfter": { "Send_approval_email": [ "Succeeded" ] }
+          "runAfter": { "Dead_letter_post": [ "Succeeded", "Failed", "TimedOut" ] }
         }
       },
-      "else": {
-        "actions": {
-          "Respond_auto_approved": {
-            "type": "Response",
-            "kind": "Http",
-            "inputs": {
-              "statusCode": 200,
-              "body": {
-                "requestId": "@triggerBody()?['requestId']",
-                "status": "auto-approved"
-              }
-            },
-            "runAfter": {}
-          }
-        }
-      },
-      "runAfter": { "Initialize_threshold": [ "Succeeded" ] }
+      "runAfter": { "RequestApproval": [ "Failed", "TimedOut" ] }
     }
   },
   "outputs": {}

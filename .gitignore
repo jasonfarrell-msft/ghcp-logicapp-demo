@@ -1,6 +1,7 @@
 # Bicep build artifacts
 infra/**/*.json
 !infra/workflows/*.workflow.json
+infra-standard/**/*.json
 
 # Azure CLI
 .azure/

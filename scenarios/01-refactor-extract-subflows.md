@@ -37,6 +37,7 @@ az bicep build --file infra/main.bicep
 - Copilot understands Logic Apps `Scope` and `runAfter` semantics.
 - It edits the JSON and the Bicep mirror **in sync** in one pass — a manual refactor would drift.
 - ⚠️ **Consumption gotcha:** `InitializeVariable` is illegal inside a `Scope`. If Copilot nests them you get `InvalidVariableInitialization` at deploy time. Worth calling out — the prompt explicitly steers Copilot around this.
+- ⚠️ **`Respond` scope note:** in practice Copilot will fold the `Response` actions into a single `RequestApproval` scope rather than extracting them into a separate `Respond` scope. HTTP `Response` actions must be in the same branch that decides the outcome (they can't converge from separate branches without a result-passing variable). If extracting a separate `Respond` scope is a hard requirement, add a follow-up prompt asking Copilot to use a `Set variable` action to capture the outcome first.
 - `az bicep build` is the cheap validation gate before redeploying.
 
 ---

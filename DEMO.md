@@ -228,6 +228,29 @@ you must, single-quote the URL:
 
 `invoke.ps1` warns when the `sig=` parameter is missing.
 
+### 4. Scenario 07 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
+
+**Cause:** the subscription has zero `WorkflowStandard` (WS1) VM quota.
+Standard Logic Apps run on a dedicated App Service Plan and consume quota
+even at 0 instances.
+
+**Fix:** request a quota increase via
+**Portal → Subscriptions → Usage + Quotas → WorkflowStandard** or use a
+different subscription. Until quota is available, treat scenario 07 as a
+**code walk-through** — the Bicep is valid and all files are in place; only
+the Azure provisioning step is blocked.
+
+### 5. `az deployment sub create` prints `ERROR: The content for this response was already consumed`
+
+**Cause:** known bug in Azure CLI 2.74 where `--query` combined with a
+deployment that produces structured output can consume the response body
+before the error reporter can read it. The underlying error (e.g. quota)
+is still surfaced in the exit code and in `az deployment operation sub list`.
+
+**Fix:** omit `--query` / `-o json` and let `deploy.ps1` print the full
+ARM response, or use `az deployment sub what-if` first to see quota errors
+before the actual deploy.
+
 ## Cleanup (after the demo)
 
 ```powershell

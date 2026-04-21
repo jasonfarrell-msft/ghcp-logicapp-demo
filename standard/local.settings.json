@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    "APP_KIND": "workflowApp",
+    "WORKFLOWS_SUBSCRIPTION_ID": "<your-subscription-id>",
+    "WORKFLOWS_LOCATION_NAME": "eastus",
+    "WORKFLOWS_RESOURCE_GROUP_NAME": "rg-ghcp-logicapp-standard-dev",
+    "WORKFLOWS_ENVIRONMENT": "dev",
+    "OFFICE365_CONNECTION_RUNTIME_URL": "<paste from portal -> connection -> properties.connectionRuntimeUrl>"
+  }
+}

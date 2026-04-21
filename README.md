@@ -119,3 +119,53 @@ demo, not between scenarios. To start fresh after a reset, redeploy:
 The presenter order in [`DEMO.md`](./DEMO.md) is **not** `01 → 07` — it
 opens with `05` (explain) and ends with `07` (migrate). See that file for the
 narrative arc.
+
+## Standard (Logic Apps Standard) — side-by-side
+
+Scenario 07 introduces a **side-by-side Logic Apps Standard** project. The
+original Consumption deployment under `infra/` stays in place so both
+runtimes can be compared live.
+
+```
+standard/
+├── host.json
+├── connections.json
+├── parameters.json
+├── local.settings.json   # local-only — replace placeholders before `func start`
+└── Approval/
+    └── workflow.json
+infra-standard/
+├── main.bicep
+├── modules/logicAppStandard.bicep
+└── parameters/{dev,prod}.bicepparam
+scripts/deploy-standard.ps1
+```
+
+### Prerequisites (Standard only)
+
+- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
+- [Azure Logic Apps (Standard) VS Code extension](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-azurelogicapps)
+- (Optional, for full local dev) Azurite for local storage emulation
+
+### Deploy
+
+```powershell
+az bicep build --file infra-standard/main.bicep
+./scripts/deploy-standard.ps1 -Environment dev
+```
+
+The script provisions the Storage Account, WS1 plan, and `workflowapp` site,
+then runs `func azure functionapp publish` to deploy the contents of
+`standard/` to the new site. Pass `-SkipContent` to provision infra only.
+
+### Run locally
+
+```powershell
+cd standard
+func start
+```
+
+POST the same approval payload to the local trigger URL printed by `func`.
+
+See [`docs/migration-consumption-to-standard.md`](./docs/migration-consumption-to-standard.md)
+for the full migration plan.
