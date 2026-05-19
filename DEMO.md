@@ -21,20 +21,19 @@ one: a full Consumption → Standard migration.
 
 ## The narrative arc
 
-The order is **not** `01 → 07`. We start where a real engineer would: "what
-is this thing?"
+The scenarios are numbered in presentation order — `01` through `06` — starting
+where a real engineer would: "what is this thing?"
 
 | Beat | Scenario | Why this slot |
 |---|---|---|
-| 1 | **05 Explain & document** | Open with comprehension. Sets context, surfaces issues that motivate scenarios 02 / 03 / 06. |
-| 2 | **01 Refactor: extract sub-flows** | First real edit. Shows Copilot navigates Logic Apps schema (`Scope`, `runAfter`) and the Bicep mirror in one pass. |
-| 3 | **02 Parameterize values** | Builds on the cleaner shape. The `dev` vs `prod` payoff is tangible. |
-| 4 | **03 Add error handling** | Now that the workflow is parameterized, harden it. Strong "before/after" failure-mode story. |
-| 5 | **06 Teams notification** | New connector end-to-end — `$connections`, Bicep mapping, action body. Demonstrates breadth, not just depth. |
-| 6 | **04 Escalation branch** | Cross-file IaC change touching workflow JSON, module, `main.bicep`, and both `.bicepparam` files. |
-| 7 | **07 Migrate Consumption → Standard** | Finale. The single biggest cross-cutting change Copilot can do for you here. |
+| 1 | **01 Explain & document** | Open with comprehension. Sets context, surfaces issues that motivate scenarios 03 / 04. |
+| 2 | **02 Refactor: extract sub-flows** | First real edit. Shows Copilot navigates Logic Apps schema (`Scope`, `runAfter`) and the Bicep mirror in one pass. |
+| 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
+| 4 | **04 Teams notification** | New connector end-to-end — `$connections`, Bicep mapping, action body. Demonstrates breadth, not just depth. |
+| 5 | **05 Escalation branch** | Cross-file IaC change touching workflow JSON, module, `main.bicep`, and both `.bicepparam` files. |
+| 6 | **06 Migrate Consumption → Standard** | Finale. The single biggest cross-cutting change Copilot can do for you here. |
 
-If short on time, cut **04** first (closest in shape to **02**/**06**).
+If short on time, cut **05** first (closest in shape to **04**).
 
 ## Pre-flight checklist (do this BEFORE the audience walks in)
 
@@ -65,7 +64,7 @@ Run these once. They survive across the whole demo.
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
-- [ ] (Scenario 06 only) After deploying Teams, authorize that API connection
+- [ ] (Scenario 04 only) After deploying Teams, authorize that API connection
   before re-running `invoke.ps1`.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,
@@ -80,29 +79,29 @@ For each beat: open the scenario file, paste its **Prompt** verbatim into
 Copilot, accept the diff, then run **Verify** from the scenario doc. The
 narration below is what to say out loud as you do it.
 
-### Beat 1 — Scenario 05: Explain & document
+### Beat 1 — Scenario 01: Explain & document
 
 > **Say this:** "Before we change anything, let's see what we have. This is
 > what most engineers actually do on day one with an unfamiliar Logic App —
 > and it usually means clicking around the designer. Let's ask Copilot
 > instead."
 
-Open [`scenarios/05-explain-and-document.md`](./scenarios/05-explain-and-document.md).
+Open [`scenarios/01-explain-and-document.md`](./scenarios/01-explain-and-document.md).
 Paste both prompts. Show `docs/approval-workflow.md` next to the portal
 designer.
 
 **Why this beat matters:** sets context, builds trust that Copilot reads
 the workflow correctly, and the follow-up "review for issues" prompt
-naturally cues scenarios 02, 03, and 06.
+naturally cues scenarios 03 and 04.
 
-### Beat 2 — Scenario 01: Refactor: extract sub-flows
+### Beat 2 — Scenario 02: Refactor: extract sub-flows
 
 > **Say this:** "Copilot identified gaps. Let's start by giving the workflow
 > some structure — group actions into named scopes, the way we'd want them
 > in code review. Watch how it edits both the standalone JSON and the Bicep
 > mirror in a single pass."
 
-Open [`scenarios/01-refactor-extract-subflows.md`](./scenarios/01-refactor-extract-subflows.md).
+Open [`scenarios/02-refactor-extract-subflows.md`](./scenarios/02-refactor-extract-subflows.md).
 
 **Why this beat matters:** first real edit. Shows schema literacy
 (`Scope`/`runAfter`) and the mirror-file consistency story. Highlight the
@@ -110,21 +109,7 @@ Open [`scenarios/01-refactor-extract-subflows.md`](./scenarios/01-refactor-extra
 subtle rule that bites people, and it's why the prompt explicitly asks
 Copilot to keep init variables at the root.
 
-### Beat 3 — Scenario 02: Parameterize values
-
-> **Say this:** "Now that the shape is clean, let's get rid of the
-> hard-coded threshold. We'll pull it out as a workflow parameter and feed
-> it from Bicep — then deploy to `dev` and `prod` to prove the same workflow
-> behaves differently per environment from the parameter file alone."
-
-Open [`scenarios/02-parameterize-values.md`](./scenarios/02-parameterize-values.md).
-Run both `dev` and `prod` deploys for the payoff.
-
-**Why this beat matters:** demonstrates Copilot understanding the difference
-between `variables` and `parameters` (a real Logic Apps gotcha), and shows
-the IaC-side payoff with a concrete behavioural difference.
-
-### Beat 4 — Scenario 03: Add error handling
+### Beat 3 — Scenario 03: Add error handling
 
 > **Say this:** "Right now if the connector hiccups, the caller gets nothing
 > useful. Let's add a retry policy, a failure scope, and a dead-letter
@@ -139,39 +124,39 @@ the graceful 502.
 `retryPolicy` JSON shape are the kinds of things people get subtly wrong by
 hand. The dead-letter pattern transfers to other workflows.
 
-### Beat 5 — Scenario 06: Teams notification
+### Beat 4 — Scenario 04: Teams notification
 
 > **Say this:** "New connector end-to-end. Wiring one in touches three
 > places that must agree — `$connections` in the workflow, the parameters
 > mapping in Bicep, and the action body. Watch Copilot do all three."
 
-Open [`scenarios/06-add-teams-notification.md`](./scenarios/06-add-teams-notification.md).
+Open [`scenarios/04-add-teams-notification.md`](./scenarios/04-add-teams-notification.md).
 Make sure the Teams connection is authorized before you re-invoke.
 
 **Why this beat matters:** breadth. Shows the cross-file consistency story
 generalises to a different connector with a more verbose payload (the
 adaptive card).
 
-### Beat 6 — Scenario 04: Escalation branch
+### Beat 5 — Scenario 05: Escalation branch
 
 > **Say this:** "One last in-place change before the finale. We'll add a
 > second approver tier for high-value requests — a workflow change *and*
 > two new Bicep params *and* updates to both parameter files. One prompt."
 
-Open [`scenarios/04-add-escalation-branch.md`](./scenarios/04-add-escalation-branch.md).
+Open [`scenarios/05-add-escalation-branch.md`](./scenarios/05-add-escalation-branch.md).
 Demo all three amounts (`250`, `2500`, `15000`) to walk every branch.
 
 **Why this beat matters:** maximum cross-file fan-out for a single intent.
 If the audience needed convincing on consistency, this seals it.
 
-### Beat 7 — Scenario 07: Migrate Consumption → Standard (finale)
+### Beat 6 — Scenario 06: Migrate Consumption → Standard (finale)
 
 > **Say this:** "We've been editing in place. Now the big one — migrate the
 > whole thing to Logic Apps Standard, side-by-side. Different Azure
 > resources, different on-disk layout, different connection model, and
 > local dev unlocked. Hours by hand. Minutes with Copilot."
 
-Open [`scenarios/07-migrate-consumption-to-standard.md`](./scenarios/07-migrate-consumption-to-standard.md).
+Open [`scenarios/06-migrate-consumption-to-standard.md`](./scenarios/06-migrate-consumption-to-standard.md).
 Walk the five sub-prompts. Deploy with the new `scripts/deploy-standard.ps1`
 that Copilot generates. Open both Logic Apps in the portal to compare.
 
@@ -264,4 +249,4 @@ before the actual deploy.
 ```
 
 Restores the working tree and deletes `rg-ghcp-logicapp-dev`. If you ran
-`prod` in scenario 02, repeat with `-Environment prod`.
+`prod` in scenario 05, repeat with `-Environment prod`.
