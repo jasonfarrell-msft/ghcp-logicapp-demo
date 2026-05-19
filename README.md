@@ -60,7 +60,7 @@ one of those gaps live.**
 
 Install the recommended extensions before running the labs. They cover the
 Bicep files, Logic Apps Standard project, REST sample requests, and the
-Mermaid diagram generated in Scenario 05.
+Mermaid diagram generated in Scenario 01.
 
 ```powershell
 code --install-extension GitHub.copilot
@@ -133,21 +133,19 @@ demo, not between scenarios. To start fresh after a reset, redeploy:
 
 | # | Scenario | What it shows |
 |---|---|---|
-| 01 | Refactor: extract sub-flows | Copilot reasons over `Scope`/`runAfter` |
-| 02 | Parameterize hard-coded values | Workflow `parameters` vs `variables` |
+| 01 | Explain & document | Mermaid + plain-English from JSON |
+| 02 | Refactor: extract sub-flows | Copilot reasons over `Scope`/`runAfter` |
 | 03 | Add error handling | `retryPolicy`, failure scopes, dead-letter |
-| 04 | Add an escalation branch | Cross-file IaC consistency |
-| 05 | Explain & document | Mermaid + plain-English from JSON |
-| 06 | Add Teams notification | Wiring a new connector end-to-end |
-| 07 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
+| 04 | Add Teams notification | Wiring a new connector end-to-end |
+| 05 | Add an escalation branch | Cross-file IaC consistency |
+| 06 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
 
-The presenter order in [`DEMO.md`](./DEMO.md) is **not** `01 → 07` — it
-opens with `05` (explain) and ends with `07` (migrate). See that file for the
-narrative arc.
+Scenarios are numbered in presentation order. See [`DEMO.md`](./DEMO.md) for
+the full narrative arc, talking points, and per-beat narration.
 
 ## Standard (Logic Apps Standard) — side-by-side
 
-Scenario 07 introduces a **side-by-side Logic Apps Standard** project. The
+Scenario 06 introduces a **side-by-side Logic Apps Standard** project. The
 original Consumption deployment under `infra/` stays in place so both
 runtimes can be compared live.
 

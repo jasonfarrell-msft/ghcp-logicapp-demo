@@ -204,7 +204,7 @@ Consumption Logic Apps forbid this.
 > them with `runAfter`.
 
 Re-run `az bicep build --file infra/main.bicep` then redeploy. This is
-scenario 01's documented gotcha — keep it as a teaching moment.
+scenario 02's documented gotcha — keep it as a teaching moment.
 
 ### 3. `HTTP 401` from a manually-pasted trigger URL
 
@@ -219,7 +219,7 @@ you must, single-quote the URL:
 
 `invoke.ps1` warns when the `sig=` parameter is missing.
 
-### 4. Scenario 07 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
+### 4. Scenario 06 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
 
 **Cause:** the subscription has zero `WorkflowStandard` (WS1) VM quota.
 Standard Logic Apps run on a dedicated App Service Plan and consume quota
@@ -227,7 +227,7 @@ even at 0 instances.
 
 **Fix:** request a quota increase via
 **Portal → Subscriptions → Usage + Quotas → WorkflowStandard** or use a
-different subscription. Until quota is available, treat scenario 07 as a
+different subscription. Until quota is available, treat scenario 06 as a
 **code walk-through** — the Bicep is valid and all files are in place; only
 the Azure provisioning step is blocked.
 
