@@ -40,6 +40,9 @@ If short on time, cut **04** first (closest in shape to **02**/**06**).
 
 Run these once. They survive across the whole demo.
 
+- [ ] Install the VS Code lab extensions from the README or accept the
+  workspace recommendations: GitHub Copilot, Copilot Chat, Bicep, Azure
+  Logic Apps Standard, REST Client, and Markdown Preview Mermaid Support.
 - [ ] `az login` and `az account set --subscription <id>`
 - [ ] `az bicep install` (or upgrade) — `az bicep version` to confirm
 - [ ] Baseline deployed:
@@ -47,20 +50,23 @@ Run these once. They survive across the whole demo.
   az bicep build --file infra/main.bicep
   ./scripts/deploy.ps1 -Environment dev
   ```
-- [ ] Smoke test passes (no connector auth required):
+- [ ] **Authorize deployed API connections before running invoke**:
+  Logic App `la-approval-dev` → API connections → authorize each deployed
+  connection that the workflow uses. For the baseline, authorize
+  `con-office365-dev` via **Edit API connection** → **Authorize**.
+- [ ] Smoke test passes (confirms the trigger and low-amount path):
   ```powershell
   ./scripts/invoke.ps1 -Environment dev -Amount 100
   ```
   ✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
-- [ ] **Authorize the Office 365 connection in the portal** (one-time):
-  Logic App `la-approval-dev` → API connections → `con-office365-dev` →
-  **Edit API connection** → **Authorize**. Then verify:
+- [ ] Full approval path passes:
   ```powershell
   ./scripts/invoke.ps1 -Environment dev -Amount 2500
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
-- [ ] (Scenario 06 only) Authorize the Teams connection the same way.
+- [ ] (Scenario 06 only) After deploying Teams, authorize that API connection
+  before re-running `invoke.ps1`.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,
   `infra/modules/logicApp.bicep`,

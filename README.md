@@ -53,8 +53,32 @@ one of those gaps live.**
 
 - Azure CLI ≥ 2.50 with the Bicep extension (`az bicep install`)
 - An Azure subscription you can deploy to (`az login` first)
-- VS Code with the **REST Client** extension (optional, for `samples/*.http`)
+- VS Code with the lab extensions listed below
 - GitHub Copilot Chat / CLI
+
+## VS Code environment setup
+
+Install the recommended extensions before running the labs. They cover the
+Bicep files, Logic Apps Standard project, REST sample requests, and the
+Mermaid diagram generated in Scenario 05.
+
+```powershell
+code --install-extension GitHub.copilot
+code --install-extension GitHub.copilot-chat
+code --install-extension ms-azuretools.vscode-bicep
+code --install-extension ms-azuretools.vscode-azurelogicapps
+code --install-extension humao.rest-client
+code --install-extension bierner.markdown-mermaid
+```
+
+You can confirm the environment with:
+
+```powershell
+code --list-extensions | Select-String 'GitHub.copilot|GitHub.copilot-chat|ms-azuretools.vscode-bicep|ms-azuretools.vscode-azurelogicapps|humao.rest-client|bierner.markdown-mermaid'
+```
+
+When VS Code opens this workspace, it also prompts for these extensions from
+`.vscode/extensions.json` if any are missing.
 
 ## One-time setup
 
@@ -65,16 +89,17 @@ az bicep build --file infra/main.bicep
 # Deploy dev baseline
 ./scripts/deploy.ps1 -Environment dev
 
-# Smoke test (skips the Office 365 connector — no auth required yet):
+# Authorize the deployed API connections in the portal before invoking:
+# Logic App -> API connections -> con-office365-dev -> Edit API connection -> Authorize
+
+# Smoke test after connection authorization:
 ./scripts/invoke.ps1 -Environment dev -Amount 100
 ```
 
 ✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
 
-To exercise the full approval path (`-Amount 2500` and above), authorize the
-Office 365 connection **once** in the portal: Logic App → API connections →
-`con-office365-dev` → **Edit API connection** → **Authorize**. The
-authorization survives redeploys.
+To exercise the full approval path (`-Amount 2500` and above), use the Office
+365 connection authorized during setup. The authorization survives redeploys.
 
 ## Invoke
 

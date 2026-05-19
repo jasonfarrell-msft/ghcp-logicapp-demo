@@ -9,7 +9,7 @@
     PowerShell command line (where '&' is a command separator).
 
 .EXAMPLE
-    # Easiest — no copy/paste:
+    # Easiest - no copy/paste:
     ./scripts/invoke.ps1 -Environment dev -Amount 2500
 
 .EXAMPLE
@@ -54,7 +54,7 @@ if (-not $TriggerUrl) {
 
 if ($TriggerUrl -notmatch '(?i)[?&]sig=') {
     Write-Warning "TriggerUrl is missing the 'sig=' query parameter."
-    Write-Warning "If you pasted it in, wrap it in SINGLE QUOTES — PowerShell treats '&' as a command separator and silently truncates the URL."
+    Write-Warning "If you pasted it in, wrap it in SINGLE QUOTES. PowerShell treats '&' as a command separator and silently truncates the URL."
     Write-Warning "Received: $TriggerUrl"
 }
 
@@ -91,12 +91,16 @@ catch {
             $errBody = $reader.ReadToEnd()
             if ($errBody) { Write-Host $errBody -ForegroundColor Red }
         } catch { }
-        switch ($status) {
-            401 { Write-Host "Hint: SAS signature mismatch. If you passed -TriggerUrl, wrap it in single quotes; or omit it to let the script fetch it." -ForegroundColor Yellow }
-            403 { Write-Host "Hint: Access denied. Check IP restrictions on the workflow." -ForegroundColor Yellow }
-            404 { Write-Host "Hint: Workflow or trigger not found. Confirm the workflow is deployed and enabled." -ForegroundColor Yellow }
-            500 { Write-Host "Hint: The run started but an action failed (often: Office 365 connection not authorized in the portal)." -ForegroundColor Yellow }
-            502 { Write-Host "Hint: 502 = a downstream connector returned an error. Almost always: the Office 365 connection isn't authorized. Open the Logic App in the portal -> API connections -> office365 -> Edit API connection -> Authorize. Or run: ./scripts/invoke.ps1 -Amount 100  (below threshold, skips the connector entirely)." -ForegroundColor Yellow }
+        $hints = @{
+            401 = "Hint: SAS signature mismatch. If you passed -TriggerUrl, wrap it in single quotes or omit it to let the script fetch it."
+            403 = "Hint: Access denied. Check IP restrictions on the workflow."
+            404 = "Hint: Workflow or trigger not found. Confirm the workflow is deployed and enabled."
+            500 = "Hint: The run started but an action failed, often because the Office 365 connection is not authorized in the portal."
+            502 = "Hint: 502 means a downstream connector returned an error. Usually the Office 365 connection is not authorized. Open the Logic App in the portal, then API connections, office365, Edit API connection, Authorize. Or run: ./scripts/invoke.ps1 -Amount 100 to skip the connector."
+        }
+
+        if ($hints.ContainsKey($status)) {
+            Write-Host $hints[$status] -ForegroundColor Yellow
         }
     } else {
         Write-Host $_.Exception.Message -ForegroundColor Red

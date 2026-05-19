@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+    "ms-azuretools.vscode-bicep",
+    "ms-azuretools.vscode-azurelogicapps",
+    "humao.rest-client",
+    "bierner.markdown-mermaid"
+  ]
+}

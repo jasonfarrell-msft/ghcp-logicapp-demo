@@ -27,12 +27,15 @@
 
 ## Verify
 
-Open `docs/approval-workflow.md` side-by-side with the portal designer view. Same information, version-controlled, reviewable in a PR. Mermaid renders inline on GitHub — no extra tooling required.
+Open `docs/approval-workflow.md` side-by-side with the portal designer view.
+Same information, version-controlled, reviewable in a PR. Mermaid renders
+inline on GitHub, and in VS Code when the recommended Markdown Preview
+Mermaid Support extension is installed.
 
 ## Talking points
 - Opaque JSON → reviewable docs in seconds.
 - The "review for issues" prompt seeds the rest of the demo arc.
-- Mermaid renders inline on GitHub — no extra tooling.
+- Mermaid renders inline on GitHub and in the VS Code Markdown preview once the lab extensions are installed.
 
 ---
 **Redeploy:** not needed (this scenario is docs-only).
