@@ -73,8 +73,8 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 
 ### Step 5 — Update tooling
 
-> Add a new deploy script `scripts/deploy-standard.ps1` modeled on
-> `scripts/deploy.ps1`. Update the root `README.md` with a new "Standard"
+> Add a new deploy script `scripts/deploy-standard.csx` modeled on
+> `scripts/deploy.csx`. Update the root `README.md` with a new "Standard"
 > section: prerequisites (Azure Functions Core Tools v4, VS Code Logic Apps
 > Standard extension), how to run locally (`func start` from `standard/`),
 > and how to deploy.
@@ -83,14 +83,14 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 - New `docs/migration-consumption-to-standard.md` plan.
 - New `standard/` folder with a runnable Standard project layout.
 - New `infra-standard/` Bicep deploying the App Service Plan + workflowapp site + storage.
-- New `scripts/deploy-standard.ps1`.
+- New `scripts/deploy-standard.csx`.
 - Original Consumption assets unchanged — side-by-side, not destructive.
 
 ## Verify
 
-```powershell
+```bash
 az bicep build --file infra-standard/main.bicep
-./scripts/deploy-standard.ps1 -Environment dev
+dotnet script scripts/deploy-standard.csx -- --environment dev
 # Optional local dev (requires Azure Functions Core Tools v4):
 cd standard; func start
 ```
@@ -109,4 +109,4 @@ POST the same payload to the Standard workflow's trigger URL — same behaviour,
 - Ask Copilot to add a **second workflow** (e.g., a stateless reminder) into the same Standard project — multi-workflow is a key Standard advantage.
 
 ---
-**Redeploy:** `./scripts/deploy-standard.ps1 -Environment dev` (Consumption stays deployed).
+**Redeploy:** `dotnet script scripts/deploy-standard.csx -- --environment dev` (Consumption stays deployed).

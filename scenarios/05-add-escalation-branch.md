@@ -22,12 +22,12 @@
 
 ## Verify
 
-```powershell
+```bash
 az bicep build --file infra/main.bicep
-./scripts/deploy.ps1 -Environment dev
-./scripts/invoke.ps1 -Environment dev -Amount 250     # auto-approved
-./scripts/invoke.ps1 -Environment dev -Amount 2500    # single approver
-./scripts/invoke.ps1 -Environment dev -Amount 15000   # escalation first
+dotnet script scripts/deploy.csx -- --environment dev
+dotnet script scripts/invoke.csx -- --environment dev --amount 250     # auto-approved
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500    # single approver
+dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalation first
 ```
 
 ✅ Three amounts walk all three branches.
@@ -37,4 +37,4 @@ az bicep build --file infra/main.bicep
 - Maximum cross-file fan-out for a single intent — the consistency story at its strongest.
 
 ---
-**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).
+**Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).

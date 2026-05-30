@@ -20,11 +20,11 @@
 
 ## Verify
 
-```powershell
+```bash
 az bicep build --file infra/main.bicep
-./scripts/deploy.ps1 -Environment dev
+dotnet script scripts/deploy.csx -- --environment dev
 # One-time: portal → Logic App → API connections → teams → Authorize.
-./scripts/invoke.ps1 -Environment dev -Amount 2500
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ```
 
 ✅ Approve via the email — adaptive card appears in the configured Teams channel.
@@ -35,4 +35,4 @@ az bicep build --file infra/main.bicep
 - Adaptive card JSON is verbose — Copilot generates a working baseline you can iterate on.
 
 ---
-**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).
+**Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).

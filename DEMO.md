@@ -44,28 +44,30 @@ Run these once. They survive across the whole demo.
   Logic Apps Standard, REST Client, and Markdown Preview Mermaid Support.
 - [ ] `az login` and `az account set --subscription <id>`
 - [ ] `az bicep install` (or upgrade) — `az bicep version` to confirm
+- [ ] `dotnet --version` confirms the .NET 8 SDK (or newer) is on PATH
+- [ ] `dotnet tool install -g dotnet-script` (one-time; skip if already installed)
 - [ ] Baseline deployed:
-  ```powershell
+  ```bash
   az bicep build --file infra/main.bicep
-  ./scripts/deploy.ps1 -Environment dev
+  dotnet script scripts/deploy.csx -- --environment dev
   ```
 - [ ] **Authorize deployed API connections before running invoke**:
   Logic App `la-approval-dev` → API connections → authorize each deployed
   connection that the workflow uses. For the baseline, authorize
   `con-office365-dev` via **Edit API connection** → **Authorize**.
 - [ ] Smoke test passes (confirms the trigger and low-amount path):
-  ```powershell
-  ./scripts/invoke.ps1 -Environment dev -Amount 100
+  ```bash
+  dotnet script scripts/invoke.csx -- --environment dev --amount 100
   ```
   ✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
 - [ ] Full approval path passes:
-  ```powershell
-  ./scripts/invoke.ps1 -Environment dev -Amount 2500
+  ```bash
+  dotnet script scripts/invoke.csx -- --environment dev --amount 2500
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
 - [ ] (Scenario 04 only) After deploying Teams, authorize that API connection
-  before re-running `invoke.ps1`.
+  before re-running `invoke.csx`.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,
   `infra/modules/logicApp.bicep`,
@@ -157,7 +159,7 @@ If the audience needed convincing on consistency, this seals it.
 > local dev unlocked. Hours by hand. Minutes with Copilot."
 
 Open [`scenarios/06-migrate-consumption-to-standard.md`](./scenarios/06-migrate-consumption-to-standard.md).
-Walk the five sub-prompts. Deploy with the new `scripts/deploy-standard.ps1`
+Walk the five sub-prompts. Deploy with the new `scripts/deploy-standard.csx`
 that Copilot generates. Open both Logic Apps in the portal to compare.
 
 **Why this beat matters:** this is the demo people will remember. It's the
@@ -168,14 +170,14 @@ the repo.
 ## Between scenarios
 
 Bicep is idempotent — every scenario's redeploy is
-`./scripts/deploy.ps1 -Environment dev` against the same RG. The trigger
-URL stays the same.
+`dotnet script scripts/deploy.csx -- --environment dev` against the same RG.
+The trigger URL stays the same.
 
-⚠️ **Do not run `./scripts/reset.ps1` between scenarios.** It deletes the
+⚠️ **Do not run `scripts/reset.csx` between scenarios.** It deletes the
 resource group and re-authorizing the Office 365 connection is a portal
 click you don't want to do live. Reset is for end-of-demo cleanup only. If
 you must roll back code mid-demo, use `git restore .` and then
-`./scripts/deploy.ps1 -Environment dev`.
+`dotnet script scripts/deploy.csx -- --environment dev`.
 
 ## If something breaks
 
@@ -187,12 +189,12 @@ The three failures most likely to hit you live, in order of probability:
 
 **Fix:** Portal → Logic App → API connections → `con-office365-dev` →
 **Edit API connection** → **Authorize**. Or fall back to
-`./scripts/invoke.ps1 -Environment dev -Amount 100` to skip the connector
-entirely and keep the demo moving.
+`dotnet script scripts/invoke.csx -- --environment dev --amount 100` to skip
+the connector entirely and keep the demo moving.
 
-`invoke.ps1` already prints this hint on a 502.
+`invoke.csx` already prints this hint on a 502.
 
-### 2. `InvalidVariableInitialization` on `./scripts/deploy.ps1`
+### 2. `InvalidVariableInitialization` on `scripts/deploy.csx`
 
 **Cause:** Copilot moved an `InitializeVariable` action inside a `Scope`.
 Consumption Logic Apps forbid this.
@@ -208,16 +210,17 @@ scenario 02's documented gotcha — keep it as a teaching moment.
 
 ### 3. `HTTP 401` from a manually-pasted trigger URL
 
-**Cause:** unquoted `&` in PowerShell silently truncates the URL.
+**Cause:** unquoted `&` in PowerShell (or bash without quoting) silently
+truncates the URL.
 
-**Fix:** don't pass `-TriggerUrl` at all — let `invoke.ps1` fetch it. If
+**Fix:** don't pass `--trigger-url` at all — let `invoke.csx` fetch it. If
 you must, single-quote the URL:
 
-```powershell
-./scripts/invoke.ps1 -TriggerUrl 'https://...&sig=...'
+```bash
+dotnet script scripts/invoke.csx -- --trigger-url 'https://...&sig=...'
 ```
 
-`invoke.ps1` warns when the `sig=` parameter is missing.
+`invoke.csx` warns when the `sig=` parameter is missing.
 
 ### 4. Scenario 06 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
 
@@ -238,15 +241,15 @@ deployment that produces structured output can consume the response body
 before the error reporter can read it. The underlying error (e.g. quota)
 is still surfaced in the exit code and in `az deployment operation sub list`.
 
-**Fix:** omit `--query` / `-o json` and let `deploy.ps1` print the full
+**Fix:** omit `--query` / `-o json` and let `deploy.csx` print the full
 ARM response, or use `az deployment sub what-if` first to see quota errors
 before the actual deploy.
 
 ## Cleanup (after the demo)
 
-```powershell
-./scripts/reset.ps1 -Environment dev
+```bash
+dotnet script scripts/reset.csx -- --environment dev
 ```
 
 Restores the working tree and deletes `rg-ghcp-logicapp-dev`. If you ran
-`prod` in scenario 05, repeat with `-Environment prod`.
+`prod` in scenario 05, repeat with `--environment prod`.

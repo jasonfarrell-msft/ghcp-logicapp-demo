@@ -27,9 +27,10 @@ infra/
 ├── parameters/{dev,prod}.bicepparam
 └── workflows/approval.workflow.json # standalone copy of the definition
 samples/approval-request.http        # ready-to-send sample payloads
-scripts/deploy.ps1                   # az deployment wrapper
-scripts/invoke.ps1                   # POST a sample to the trigger URL (auto-fetches the URL)
-scripts/reset.ps1                    # git restore + delete the resource group
+scripts/deploy.csx                   # az deployment wrapper (cross-platform, dotnet-script)
+scripts/invoke.csx                   # POST a sample to the trigger URL (auto-fetches the URL)
+scripts/reset.csx                    # git restore + delete the resource group
+scripts/lib/common.csx               # shared helpers (#load'd by the other scripts)
 scenarios/                           # one markdown file per scenario
 DEMO.md                              # presenter script
 ```
@@ -53,8 +54,14 @@ one of those gaps live.**
 
 - Azure CLI ≥ 2.50 with the Bicep extension (`az bicep install`)
 - An Azure subscription you can deploy to (`az login` first)
+- **.NET SDK 8.0 (LTS)** — <https://dotnet.microsoft.com/download/dotnet/8.0>
+- **`dotnet-script` global tool** — install once with `dotnet tool install -g dotnet-script`
+  (and make sure `~/.dotnet/tools` is on your `PATH`)
 - VS Code with the lab extensions listed below
 - GitHub Copilot Chat / CLI
+
+The helper scripts under `scripts/` are `.csx` files that run cross-platform
+(Windows, macOS, Linux) via `dotnet script`. There is no PowerShell dependency.
 
 ## VS Code environment setup
 
@@ -62,19 +69,18 @@ Install the recommended extensions before running the labs. They cover the
 Bicep files, Logic Apps Standard project, REST sample requests, and the
 Mermaid diagram generated in Scenario 01.
 
-```powershell
+```bash
 code --install-extension GitHub.copilot
 code --install-extension GitHub.copilot-chat
 code --install-extension ms-azuretools.vscode-bicep
-code --install-extension ms-azuretools.vscode-azurelogicapps
 code --install-extension humao.rest-client
 code --install-extension bierner.markdown-mermaid
 ```
 
-You can confirm the environment with:
+You can confirm the environment with (works on bash, zsh, and PowerShell):
 
-```powershell
-code --list-extensions | Select-String 'GitHub.copilot|GitHub.copilot-chat|ms-azuretools.vscode-bicep|ms-azuretools.vscode-azurelogicapps|humao.rest-client|bierner.markdown-mermaid'
+```bash
+code --list-extensions | grep -E 'GitHub.copilot|GitHub.copilot-chat|ms-azuretools.vscode-bicep|ms-azuretools.vscode-azurelogicapps|humao.rest-client|bierner.markdown-mermaid'
 ```
 
 When VS Code opens this workspace, it also prompts for these extensions from
@@ -82,51 +88,54 @@ When VS Code opens this workspace, it also prompts for these extensions from
 
 ## One-time setup
 
-```powershell
+```bash
+# Install the script runner once (skip if already installed)
+dotnet tool install -g dotnet-script
+
 # Validate Bicep
 az bicep build --file infra/main.bicep
 
 # Deploy dev baseline
-./scripts/deploy.ps1 -Environment dev
+dotnet script scripts/deploy.csx -- --environment dev
 
 # Authorize the deployed API connections in the portal before invoking:
 # Logic App -> API connections -> con-office365-dev -> Edit API connection -> Authorize
 
 # Smoke test after connection authorization:
-./scripts/invoke.ps1 -Environment dev -Amount 100
+dotnet script scripts/invoke.csx -- --environment dev --amount 100
 ```
 
 ✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
 
-To exercise the full approval path (`-Amount 2500` and above), use the Office
+To exercise the full approval path (`--amount 2500` and above), use the Office
 365 connection authorized during setup. The authorization survives redeploys.
 
 ## Invoke
 
-```powershell
-./scripts/invoke.ps1 -Environment dev -Amount 2500
+```bash
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ```
 
 The script fetches the trigger URL from Azure for you — no copy/paste.
 
 If you do pass a URL explicitly, **wrap it in single quotes** — `&` is a
-command separator in PowerShell and an unquoted URL gets silently truncated,
-causing 401s:
+command separator in PowerShell and most POSIX shells, and an unquoted URL
+gets silently truncated, causing 401s:
 
-```powershell
-./scripts/invoke.ps1 -TriggerUrl 'https://...&sig=...'
+```bash
+dotnet script scripts/invoke.csx -- --trigger-url 'https://...&sig=...'
 ```
 
 …or use `samples/approval-request.http` in VS Code.
 
 ## Reset
 
-⚠️ `./scripts/reset.ps1 -Environment dev` runs `git restore .` **and deletes
-the resource group**. It does **not** redeploy. Use it at the end of the
-demo, not between scenarios. To start fresh after a reset, redeploy:
+⚠️ `dotnet script scripts/reset.csx -- --environment dev` runs `git restore .`
+**and deletes the resource group**. It does **not** redeploy. Use it at the
+end of the demo, not between scenarios. To start fresh after a reset, redeploy:
 
-```powershell
-./scripts/deploy.ps1 -Environment dev
+```bash
+dotnet script scripts/deploy.csx -- --environment dev
 ```
 
 ## Scenarios at a glance
@@ -161,7 +170,7 @@ infra-standard/
 ├── main.bicep
 ├── modules/logicAppStandard.bicep
 └── parameters/{dev,prod}.bicepparam
-scripts/deploy-standard.ps1
+scripts/deploy-standard.csx
 ```
 
 ### Prerequisites (Standard only)
@@ -172,18 +181,18 @@ scripts/deploy-standard.ps1
 
 ### Deploy
 
-```powershell
+```bash
 az bicep build --file infra-standard/main.bicep
-./scripts/deploy-standard.ps1 -Environment dev
+dotnet script scripts/deploy-standard.csx -- --environment dev
 ```
 
 The script provisions the Storage Account, WS1 plan, and `workflowapp` site,
 then runs `func azure functionapp publish` to deploy the contents of
-`standard/` to the new site. Pass `-SkipContent` to provision infra only.
+`standard/` to the new site. Pass `--skip-content` to provision infra only.
 
 ### Run locally
 
-```powershell
+```bash
 cd standard
 func start
 ```

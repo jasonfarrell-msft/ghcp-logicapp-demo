@@ -23,12 +23,12 @@
 
 ## Verify
 
-```powershell
+```bash
 az bicep build --file infra/main.bicep
-./scripts/deploy.ps1 -Environment dev
+dotnet script scripts/deploy.csx -- --environment dev
 # Force a failure: invoke BEFORE the Office 365 connection is authorized
 # (or temporarily de-authorize it in the portal).
-./scripts/invoke.ps1 -Environment dev -Amount 2500
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ```
 
 ✅ Expected: `HTTP 502` (graceful) instead of an opaque crash. Portal run history shows `HandleFailure` executed and the dead-letter POST attempted.
@@ -39,4 +39,4 @@ az bicep build --file infra/main.bicep
 - Dead-letter pattern transfers cleanly to other workflows.
 
 ---
-**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).
+**Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).

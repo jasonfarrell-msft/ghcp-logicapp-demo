@@ -25,10 +25,10 @@
 
 ## Verify
 
-```powershell
+```bash
 az bicep build --file infra/main.bicep
-./scripts/deploy.ps1 -Environment dev
-./scripts/invoke.ps1 -Environment dev -Amount 100
+dotnet script scripts/deploy.csx -- --environment dev
+dotnet script scripts/invoke.csx -- --environment dev --amount 100
 ```
 
 ✅ Expected: `HTTP 200 OK` with `"status":"auto-approved"`. Same input as baseline, cleaner shape. In the portal run history the scopes now appear as collapsible groups.
@@ -41,4 +41,4 @@ az bicep build --file infra/main.bicep
 - `az bicep build` is the cheap validation gate before redeploying.
 
 ---
-**Redeploy:** `./scripts/deploy.ps1 -Environment dev` (then re-run Verify).
+**Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).
