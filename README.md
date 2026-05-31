@@ -21,8 +21,7 @@ to set it up.
 ### Model and VS Code mode guidance (for live demos)
 
 - Use **VS Code Agent mode** (no Chat mode) so the agent makes the edits directly.
-- For scenarios **01–04**, start with **GPT-4.1** and constrain outputs to exact files + one diff.
-- For scenarios **05–06**, stay on **GPT-4.1** first; only move to a stronger model if needed.
+- **All scenarios (01–06):** use **Claude Sonnet** throughout the demo.
 - To keep thinking lightweight, add: "use the simplest valid approach, no alternatives."
 - If a response gets verbose, ask for: "single diff only, no extra explanation."
 
@@ -77,17 +76,25 @@ Install the recommended extensions before running the labs. They cover the
 Bicep files, Logic Apps Standard project, REST sample requests, and the
 Mermaid diagram generated in Scenario 01.
 
+**Mermaid diagrams: For reliable rendering and export, use the [Markdown Preview Enhanced](https://marketplace.visualstudio.com/items?itemName=shd101wyy.markdown-preview-enhanced) VS Code extension.**
+
+- The built-in Mermaid support in VS Code (v1.121+) is sometimes unreliable for complex diagrams or export.
+- Markdown Preview Enhanced provides robust Mermaid rendering, export to PNG/SVG/PDF, and works well for live demos.
+- To use: Open your markdown file, then run `Markdown Preview Enhanced: Open Preview to the Side` from the Command Palette (⇧⌘P).
+
+Recommended extensions:
+
 ```bash
 code --install-extension GitHub.copilot
 code --install-extension GitHub.copilot-chat
 code --install-extension ms-azuretools.vscode-bicep
-code --install-extension bierner.markdown-mermaid
+code --install-extension shd101wyy.markdown-preview-enhanced
 ```
 
 You can confirm the environment with (works on bash, zsh, and PowerShell):
 
 ```bash
-code --list-extensions | grep -E 'GitHub.copilot|GitHub.copilot-chat|ms-azuretools.vscode-bicep|ms-azuretools.vscode-azurelogicapps|humao.rest-client|bierner.markdown-mermaid'
+code --list-extensions | grep -E 'GitHub.copilot|GitHub.copilot-chat|ms-azuretools.vscode-bicep|ms-azuretools.vscode-azurelogicapps|humao.rest-client|shd101wyy.markdown-preview-enhanced'
 ```
 
 When VS Code opens this workspace, it also prompts for these extensions from

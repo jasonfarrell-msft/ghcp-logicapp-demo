@@ -41,7 +41,16 @@ Run these once. They survive across the whole demo.
 
 - [ ] Install the VS Code lab extensions from the README or accept the
   workspace recommendations: GitHub Copilot, Copilot Chat, Bicep, Azure
-  Logic Apps Standard, REST Client, and Markdown Preview Mermaid Support.
+  Logic Apps Standard, REST Client, and **Markdown Preview Enhanced** (for Mermaid diagrams; see below).
+
+**Mermaid diagrams: For reliable rendering and export, use the [Markdown Preview Enhanced](https://marketplace.visualstudio.com/items?itemName=shd101wyy.markdown-preview-enhanced) VS Code extension.**
+
+- The built-in Mermaid support in VS Code (v1.121+) is sometimes unreliable for complex diagrams or export.
+- Markdown Preview Enhanced provides robust Mermaid rendering, export to PNG/SVG/PDF, and works well for live demos.
+- To use: Open your markdown file, then run `Markdown Preview Enhanced: Open Preview to the Side` from the Command Palette (⇧⌘P).
+
+---
+
 - [ ] `az login` and `az account set --subscription <id>`
 - [ ] `az bicep install` (or upgrade) — `az bicep version` to confirm
 - [ ] `dotnet --version` confirms the .NET 8 SDK (or newer) is on PATH
@@ -76,8 +85,7 @@ Run these once. They survive across the whole demo.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
 - [ ] In Copilot, pick your model/mode before starting:
   - Use **VS Code Agent mode** (no Chat mode).
-  - **01–04:** start with GPT-4.1 and prompts that name exact files + required output only.
-  - **05–06:** keep GPT-4.1 first; escalate model only if a step stalls.
+  - **All scenarios (01–06):** use **Claude Sonnet** throughout the demo.
   - Ask for "single diff only" to keep responses short during live narration.
   - Add "use the simplest valid approach, no alternatives" to keep reasoning light.
 
