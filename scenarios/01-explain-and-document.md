@@ -4,8 +4,9 @@
 
 ## Model guidance (fast demo flow)
 
-- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
-- Ask for "single markdown output only" to keep the response concise.
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with a constrained prompt (exact file + exact output).
+- Ask for "single markdown output only, simplest valid approach."
 
 ## Prompt
 

@@ -4,8 +4,9 @@
 
 ## Model guidance (cross-file-heavy scenario)
 
-- Prefer **Claude Sonnet** for deepest cross-file reasoning, or use **GPT-4.1** with strict file-targeting prompts.
-- If you use GPT-4.x, explicitly ask for "one consolidated diff touching workflow, module, main, and both bicepparam files."
+- Use **VS Code Agent mode**.
+- Start with **GPT-4.1** and strict file-targeting prompts.
+- Explicitly ask for "one consolidated diff touching workflow, module, main, and both bicepparam files; simplest valid approach."
 
 ## Prompt
 

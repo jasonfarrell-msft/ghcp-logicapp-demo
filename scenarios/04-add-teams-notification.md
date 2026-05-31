@@ -4,8 +4,9 @@
 
 ## Model guidance (fast demo flow)
 
-- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
-- Ask for "single diff across workflow JSON + Bicep + params files."
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with strict file targeting.
+- Ask for "single diff across workflow JSON + Bicep + params files, simplest valid approach."
 
 ## Prompt
 

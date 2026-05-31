@@ -4,8 +4,9 @@
 
 ## Model guidance (fast demo flow)
 
-- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
-- Ask for "single diff only" so deployment verification can start quickly.
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with strict file targeting.
+- Ask for "single diff only, simplest valid approach" so deployment verification can start quickly.
 
 ## Prompt
 
