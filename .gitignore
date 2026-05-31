@@ -3,6 +3,12 @@ infra/**/*.json
 !infra/workflows/*.workflow.json
 infra-standard/**/*.json
 
+# Generated documentation
+docs/
+
+# Local nested repo formerly tracked as a submodule
+logicapp-mod-demo/
+
 # Azure CLI
 .azure/
 
