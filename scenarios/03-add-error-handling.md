@@ -2,6 +2,11 @@
 
 **Goal:** Make the workflow resilient: retry policy on the connector call, a `HandleFailure` scope, a dead-letter POST, and a 502 response so callers see the failure.
 
+## Model guidance (fast demo flow)
+
+- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
+- Ask for "single diff only" so deployment verification can start quickly.
+
 ## Prompt
 
 > In `infra/workflows/approval.workflow.json`:

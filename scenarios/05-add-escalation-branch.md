@@ -2,6 +2,11 @@
 
 **Goal:** Introduce a second approver tier for high-value requests, threading the change through workflow JSON, the Bicep module, `main.bicep`, and both `.bicepparam` files.
 
+## Model guidance (cross-file-heavy scenario)
+
+- Prefer **Claude Sonnet** for deepest cross-file reasoning, or use **GPT-4.1** with strict file-targeting prompts.
+- If you use GPT-4.x, explicitly ask for "one consolidated diff touching workflow, module, main, and both bicepparam files."
+
 ## Prompt
 
 > Update `infra/workflows/approval.workflow.json` and the matching definition

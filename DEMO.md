@@ -74,12 +74,18 @@ Run these once. They survive across the whole demo.
   `infra/parameters/dev.bicepparam`. The "keep them in sync" angle is one
   of Copilot's strongest stories.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
+- [ ] In Copilot, pick your model/mode before starting:
+  - **01–04:** GPT-4o / GPT-4.1 in inline Chat/Edit mode (fewer agent round-trips).
+  - **05–06:** Claude Sonnet (or GPT-4.1 with tighter prompts naming exact files).
+  - Ask for "single diff only" to keep responses short during live narration.
 
 ## Per-scenario beats
 
 For each beat: open the scenario file, paste its **Prompt** verbatim into
 Copilot, accept the diff, then run **Verify** from the scenario doc. The
 narration below is what to say out loud as you do it.
+
+**Model reminder:** if Copilot starts multi-step subagent back-and-forth, switch to inline Chat/Edit mode for the next prompt.
 
 ### Beat 1 — Scenario 01: Explain & document
 

@@ -2,6 +2,11 @@
 
 **Goal:** Refactor a flat workflow into well-named `Scope` blocks for readability and testability — keeping the standalone JSON and the Bicep mirror in sync.
 
+## Model guidance (fast demo flow)
+
+- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
+- Ask for "one combined diff across both files, minimal explanation."
+
 ## Prompt
 
 > Open `infra/workflows/approval.workflow.json`. Refactor the workflow so that:

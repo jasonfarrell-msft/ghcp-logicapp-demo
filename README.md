@@ -18,6 +18,13 @@ pre-flight checklist, scenario order with talking points, and an "if
 something breaks" guide. This README only covers what the repo *is* and how
 to set it up.
 
+### Model and chat-mode guidance (for live demos)
+
+- To reduce back-and-forth from internal subagents, prefer **inline Chat/Edit mode** (not full agent mode) for fast in-place diffs.
+- For scenarios **01–04**, start with **GPT-4o / GPT-4.1** for speed and concise responses.
+- For scenarios **05–06** (largest cross-file fan-out), use **Claude Sonnet** or stay on **GPT-4.1** with a stricter prompt that names exact files and outputs.
+- If a response gets verbose, ask for: "single diff only, no extra explanation."
+
 ## Repo layout
 
 ```

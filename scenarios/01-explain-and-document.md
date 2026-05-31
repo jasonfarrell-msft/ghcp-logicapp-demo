@@ -2,6 +2,11 @@
 
 **Goal:** Generate a plain-English summary, a Mermaid diagram, and an action table from the workflow JSON — the kind of artefact teams rarely keep current by hand.
 
+## Model guidance (fast demo flow)
+
+- Prefer **GPT-4o / GPT-4.1** in inline Chat/Edit mode.
+- Ask for "single markdown output only" to keep the response concise.
+
 ## Prompt
 
 > Read `infra/workflows/approval.workflow.json` and produce:

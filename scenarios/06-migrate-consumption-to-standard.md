@@ -2,6 +2,11 @@
 
 **Goal:** Side-by-side migration to a Logic Apps **Standard** project. IaC shape, on-disk layout, connection model, and local dev all change at once. The flagship cross-cutting demo.
 
+## Model guidance (largest scenario)
+
+- Prefer **Claude Sonnet** for this migration; it tends to handle long, multi-file reasoning best.
+- If using **GPT-4.1**, keep prompts tightly scoped by step and require exact file outputs to avoid extra back-and-forth.
+
 ## Why this is a great Copilot demo
 
 A Consumption → Standard migration is **not** a 1:1 copy. It requires:
