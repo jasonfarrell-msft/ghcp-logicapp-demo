@@ -73,7 +73,6 @@ Mermaid diagram generated in Scenario 01.
 code --install-extension GitHub.copilot
 code --install-extension GitHub.copilot-chat
 code --install-extension ms-azuretools.vscode-bicep
-code --install-extension humao.rest-client
 code --install-extension bierner.markdown-mermaid
 ```
 
@@ -108,7 +107,9 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 100
 ✅ Expect `HTTP 200 OK` with `"status":"auto-approved"`.
 
 To exercise the full approval path (`--amount 2500` and above), use the Office
-365 connection authorized during setup. The authorization survives redeploys.
+365 connection authorized during setup. The invoke call returns `HTTP 202
+Accepted` immediately while the approval continues asynchronously. The
+authorization survives redeploys.
 
 ## Invoke
 

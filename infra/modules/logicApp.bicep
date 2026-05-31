@@ -139,6 +139,85 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
         }
       }
       actions: {
+        Initialize_responseStatusCode: {
+          type: 'InitializeVariable'
+          inputs: {
+            variables: [
+              {
+                name: 'responseStatusCode'
+                type: 'integer'
+                value: 200
+              }
+            ]
+          }
+          runAfter: {}
+        }
+        Initialize_responseStatus: {
+          type: 'InitializeVariable'
+          inputs: {
+            variables: [
+              {
+                name: 'responseStatus'
+                type: 'string'
+                value: 'auto-approved'
+              }
+            ]
+          }
+          runAfter: { Initialize_responseStatusCode: [ 'Succeeded' ] }
+        }
+        Initialize_shouldPostTeams: {
+          type: 'InitializeVariable'
+          inputs: {
+            variables: [
+              {
+                name: 'shouldPostTeams'
+                type: 'boolean'
+                value: false
+              }
+            ]
+          }
+          runAfter: { Initialize_responseStatus: [ 'Succeeded' ] }
+        }
+        Initialize_skipApproval: {
+          type: 'InitializeVariable'
+          inputs: {
+            variables: [
+              {
+                name: 'skipApproval'
+                type: 'boolean'
+                value: false
+              }
+            ]
+          }
+          runAfter: { Initialize_shouldPostTeams: [ 'Succeeded' ] }
+        }
+        Respond_202_if_approval_required: {
+          type: 'If'
+          expression: {
+            and: [
+              { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
+            ]
+          }
+          actions: {
+            Respond_202_accepted: {
+              type: 'Response'
+              kind: 'Http'
+              inputs: {
+                statusCode: 202
+                body: {
+                  requestId: '@triggerBody()?[\'requestId\']'
+                  status: 'accepted'
+                  message: 'Approval workflow started. The request will continue asynchronously.'
+                }
+              }
+              runAfter: {}
+            }
+          }
+          else: {
+            actions: {}
+          }
+          runAfter: { Initialize_skipApproval: [ 'Succeeded' ] }
+        }
         RequestApproval: {
           type: 'Scope'
           actions: {
@@ -146,6 +225,7 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
               type: 'If'
               expression: {
                 and: [
+                  { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
                   { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'escalationThreshold\')' ] }
                 ]
               }
@@ -185,24 +265,29 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
                     Reject: {
                       case: 'Reject'
                       actions: {
-                        Respond_escalation_denied: {
-                          type: 'Response'
-                          kind: 'Http'
+                        Set_skipApproval_true: {
+                          type: 'SetVariable'
                           inputs: {
-                            statusCode: 403
-                            body: {
-                              requestId: '@triggerBody()?[\'requestId\']'
-                              status: 'escalation-denied'
-                            }
+                            name: 'skipApproval'
+                            value: true
                           }
                           runAfter: {}
                         }
-                        Terminate_after_escalation_denied: {
-                          type: 'Terminate'
+                        Set_responseStatusCode_403: {
+                          type: 'SetVariable'
                           inputs: {
-                            runStatus: 'Cancelled'
+                            name: 'responseStatusCode'
+                            value: 403
                           }
-                          runAfter: { Respond_escalation_denied: [ 'Succeeded' ] }
+                          runAfter: { Set_skipApproval_true: [ 'Succeeded' ] }
+                        }
+                        Set_responseStatus_escalation_denied: {
+                          type: 'SetVariable'
+                          inputs: {
+                            name: 'responseStatus'
+                            value: 'escalation-denied'
+                          }
+                          runAfter: { Set_responseStatusCode_403: [ 'Succeeded' ] }
                         }
                       }
                     }
@@ -221,6 +306,7 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
               expression: {
                 and: [
                   { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
+                  { equals: [ '@variables(\'skipApproval\')', false ] }
                 ]
               }
               actions: {
@@ -255,76 +341,112 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
                     Approve: {
                       case: 'Approve'
                       actions: {
-                        Respond_approved: {
-                          type: 'Response'
-                          kind: 'Http'
+                        Set_responseStatus_approved: {
+                          type: 'SetVariable'
                           inputs: {
-                            statusCode: 200
-                            body: {
-                              requestId: '@triggerBody()?[\'requestId\']'
-                              status: 'approved'
-                            }
+                            name: 'responseStatus'
+                            value: 'approved'
                           }
                           runAfter: {}
                         }
-                        Post_adaptive_card_to_Teams: {
-                          type: 'ApiConnection'
+                        Set_shouldPostTeams_true: {
+                          type: 'SetVariable'
                           inputs: {
-                            host: {
-                              connection: { name: '@parameters(\'$connections\')[\'teams\'][\'connectionId\']' }
-                            }
-                            method: 'post'
-                            path: '/v1.0/teams/conversation/adaptivecard/poster/Flow bot/location/@{encodeURIComponent(encodeURIComponent(json(concat(\'{"groupId":"\',parameters(\'teamsGroupId\'),\'","channelId":"\',parameters(\'teamsChannelId\'),\'"}\'))))}'
-                            body: {
-                              messageBody: '{"type":"AdaptiveCard","$schema":"http://adaptivecards.io/schemas/adaptive-card.json","version":"1.4","body":[{"type":"TextBlock","size":"Medium","weight":"Bolder","text":"Approval granted"},{"type":"FactSet","facts":[{"title":"Request","value":"@{triggerBody()?[\'requestId\']}"},{"title":"Requester","value":"@{triggerBody()?[\'requester\']}"},{"title":"Amount","value":"@{triggerBody()?[\'amount\']}"},{"title":"Description","value":"@{triggerBody()?[\'description\']}"}]}],"actions":[{"type":"Action.OpenUrl","title":"View run","url":"@{concat(\'https://portal.azure.com/#resource\', workflow().id, \'/runs/\', workflow().run.name)}"}]}'
-                            }
+                            name: 'shouldPostTeams'
+                            value: true
                           }
-                          runAfter: { Respond_approved: [ 'Succeeded' ] }
+                          runAfter: { Set_responseStatus_approved: [ 'Succeeded' ] }
                         }
                       }
                     }
                     Reject: {
                       case: 'Reject'
                       actions: {
-                        Respond_rejected: {
-                          type: 'Response'
-                          kind: 'Http'
+                        Set_responseStatus_rejected: {
+                          type: 'SetVariable'
                           inputs: {
-                            statusCode: 200
-                            body: {
-                              requestId: '@triggerBody()?[\'requestId\']'
-                              status: 'rejected'
-                            }
+                            name: 'responseStatus'
+                            value: 'rejected'
                           }
                           runAfter: {}
                         }
                       }
                     }
                   }
-                  default: { actions: {} }
+                  default: {
+                    actions: {
+                      Set_responseStatus_rejected_default: {
+                        type: 'SetVariable'
+                        inputs: {
+                          name: 'responseStatus'
+                          value: 'rejected'
+                        }
+                        runAfter: {}
+                      }
+                    }
+                  }
                   runAfter: { Send_approval_email: [ 'Succeeded' ] }
                 }
               }
-              else: {
-                actions: {
-                  Respond_auto_approved: {
-                    type: 'Response'
-                    kind: 'Http'
-                    inputs: {
-                      statusCode: 200
-                      body: {
-                        requestId: '@triggerBody()?[\'requestId\']'
-                        status: 'auto-approved'
-                      }
-                    }
-                    runAfter: {}
-                  }
-                }
-              }
+              else: { actions: {} }
               runAfter: { Check_escalation_threshold: [ 'Succeeded' ] }
             }
           }
-          runAfter: {}
+          runAfter: { Respond_202_if_approval_required: [ 'Succeeded' ] }
+        }
+        Respond: {
+          type: 'If'
+          expression: {
+            and: [
+              { lessOrEquals: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
+            ]
+          }
+          actions: {
+            Respond_http: {
+              type: 'Response'
+              kind: 'Http'
+              inputs: {
+                statusCode: '@variables(\'responseStatusCode\')'
+                body: {
+                  requestId: '@triggerBody()?[\'requestId\']'
+                  status: '@variables(\'responseStatus\')'
+                }
+              }
+              runAfter: {}
+            }
+          }
+          else: {
+            actions: {}
+          }
+          runAfter: { RequestApproval: [ 'Succeeded' ] }
+        }
+        Post_adaptive_card_to_Teams_if_needed: {
+          type: 'If'
+          expression: {
+            and: [
+              { equals: [ '@variables(\'shouldPostTeams\')', true ] }
+            ]
+          }
+          actions: {
+            Post_adaptive_card_to_Teams: {
+              type: 'ApiConnection'
+              inputs: {
+                host: {
+                  connection: { name: '@parameters(\'$connections\')[\'teams\'][\'connectionId\']' }
+                }
+                method: 'post'
+                path: '/v1.0/teams/conversation/adaptivecard/poster/Flow bot/location/@{encodeURIComponent(encodeURIComponent(json(concat(\'{"groupId":"\',parameters(\'teamsGroupId\'),\'","channelId":"\',parameters(\'teamsChannelId\'),\'"}\'))))}'
+                body: {
+                  messageBody: '{"type":"AdaptiveCard","$schema":"http://adaptivecards.io/schemas/adaptive-card.json","version":"1.4","body":[{"type":"TextBlock","size":"Medium","weight":"Bolder","text":"Approval granted"},{"type":"FactSet","facts":[{"title":"Request","value":"@{triggerBody()?[\'requestId\']}"},{"title":"Requester","value":"@{triggerBody()?[\'requester\']}"},{"title":"Amount","value":"@{triggerBody()?[\'amount\']}"},{"title":"Description","value":"@{triggerBody()?[\'description\']}"}]}],"actions":[{"type":"Action.OpenUrl","title":"View run","url":"@{concat(\'https://portal.azure.com/#resource\', workflow().id, \'/runs/\', workflow().run.name)}"}]}'
+                }
+              }
+              runAfter: {}
+            }
+          }
+          else: {
+            actions: {}
+          }
+          runAfter: { RequestApproval: [ 'Succeeded' ] }
         }
         HandleFailure: {
           type: 'Scope'
@@ -341,20 +463,34 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   trigger: '@triggerBody()'
                 }
               }
-              runAfter: {}
+              runAfter: { Respond_502_if_no_early_response: [ 'Succeeded' ] }
             }
-            Respond_502: {
-              type: 'Response'
-              kind: 'Http'
-              inputs: {
-                statusCode: 502
-                body: {
-                  requestId: '@triggerBody()?[\'requestId\']'
-                  status: 'approval-failed'
-                  runId: '@{workflow().run.id}'
+            Respond_502_if_no_early_response: {
+              type: 'If'
+              expression: {
+                and: [
+                  { lessOrEquals: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
+                ]
+              }
+              actions: {
+                Respond_502: {
+                  type: 'Response'
+                  kind: 'Http'
+                  inputs: {
+                    statusCode: 502
+                    body: {
+                      requestId: '@triggerBody()?[\'requestId\']'
+                      status: 'approval-failed'
+                      runId: '@{workflow().run.id}'
+                    }
+                  }
+                  runAfter: {}
                 }
               }
-              runAfter: { Dead_letter_post: [ 'Succeeded', 'Failed', 'TimedOut' ] }
+              else: {
+                actions: {}
+              }
+              runAfter: {}
             }
           }
           runAfter: { RequestApproval: [ 'Failed', 'TimedOut' ] }

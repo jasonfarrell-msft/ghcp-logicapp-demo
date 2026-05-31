@@ -60,9 +60,12 @@ Console.WriteLine(body);
 
 try
 {
-    using var http = new HttpClient();
-    using var content = new StringContent(body, Encoding.UTF8, "application/json");
-    using var response = await http.PostAsync(triggerUrl, content);
+    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    using var request = new HttpRequestMessage(HttpMethod.Post, triggerUrl)
+    {
+        Content = new StringContent(body, Encoding.UTF8, "application/json"),
+    };
+    using var response = await http.SendAsync(request);
     var responseBody = await response.Content.ReadAsStringAsync();
 
     Console.WriteLine();
