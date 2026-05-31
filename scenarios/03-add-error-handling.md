@@ -2,6 +2,12 @@
 
 **Goal:** Make the workflow resilient: retry policy on the connector call, a `HandleFailure` scope, a dead-letter POST, and a 502 response so callers see the failure.
 
+## Model guidance (fast demo flow)
+
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with strict file targeting.
+- Ask for "single diff only, simplest valid approach" so deployment verification can start quickly.
+
 ## Prompt
 
 > In `infra/workflows/approval.workflow.json`:

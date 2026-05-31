@@ -18,6 +18,14 @@ pre-flight checklist, scenario order with talking points, and an "if
 something breaks" guide. This README only covers what the repo *is* and how
 to set it up.
 
+### Model and VS Code mode guidance (for live demos)
+
+- Use **VS Code Agent mode** (no Chat mode) so the agent makes the edits directly.
+- For scenarios **01–04**, start with **GPT-4.1** and constrain outputs to exact files + one diff.
+- For scenarios **05–06**, stay on **GPT-4.1** first; only move to a stronger model if needed.
+- To keep thinking lightweight, add: "use the simplest valid approach, no alternatives."
+- If a response gets verbose, ask for: "single diff only, no extra explanation."
+
 ## Repo layout
 
 ```

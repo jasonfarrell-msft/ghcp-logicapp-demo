@@ -74,12 +74,20 @@ Run these once. They survive across the whole demo.
   `infra/parameters/dev.bicepparam`. The "keep them in sync" angle is one
   of Copilot's strongest stories.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
+- [ ] In Copilot, pick your model/mode before starting:
+  - Use **VS Code Agent mode** (no Chat mode).
+  - **01–04:** start with GPT-4.1 and prompts that name exact files + required output only.
+  - **05–06:** keep GPT-4.1 first; escalate model only if a step stalls.
+  - Ask for "single diff only" to keep responses short during live narration.
+  - Add "use the simplest valid approach, no alternatives" to keep reasoning light.
 
 ## Per-scenario beats
 
 For each beat: open the scenario file, paste its **Prompt** verbatim into
 Copilot, accept the diff, then run **Verify** from the scenario doc. The
 narration below is what to say out loud as you do it.
+
+**Model reminder:** if Copilot starts multi-step back-and-forth, tighten the next prompt with exact files/output and "simplest valid approach."
 
 ### Beat 1 — Scenario 01: Explain & document
 

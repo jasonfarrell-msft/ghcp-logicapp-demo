@@ -2,6 +2,12 @@
 
 **Goal:** Wire a new connector end-to-end — `$connections` in the workflow, the parameters mapping in Bicep, and the action body — to post an adaptive card on approval.
 
+## Model guidance (fast demo flow)
+
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with strict file targeting.
+- Ask for "single diff across workflow JSON + Bicep + params files, simplest valid approach."
+
 ## Prompt
 
 > Add a Teams notification step to the approval workflow. After

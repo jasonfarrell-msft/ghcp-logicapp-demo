@@ -2,6 +2,12 @@
 
 **Goal:** Refactor a flat workflow into well-named `Scope` blocks for readability and testability — keeping the standalone JSON and the Bicep mirror in sync.
 
+## Model guidance (fast demo flow)
+
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with strict file targeting.
+- Ask for "one combined diff across both files, minimal explanation, simplest valid approach."
+
 ## Prompt
 
 > Open `infra/workflows/approval.workflow.json`. Refactor the workflow so that:

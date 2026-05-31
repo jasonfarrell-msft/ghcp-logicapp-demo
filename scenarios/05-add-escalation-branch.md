@@ -2,6 +2,12 @@
 
 **Goal:** Introduce a second approver tier for high-value requests, threading the change through workflow JSON, the Bicep module, `main.bicep`, and both `.bicepparam` files.
 
+## Model guidance (cross-file-heavy scenario)
+
+- Use **VS Code Agent mode**.
+- Start with **GPT-4.1** and strict file-targeting prompts.
+- Explicitly ask for "one consolidated diff touching workflow, module, main, and both bicepparam files; simplest valid approach."
+
 ## Prompt
 
 > Update `infra/workflows/approval.workflow.json` and the matching definition

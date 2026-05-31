@@ -2,6 +2,12 @@
 
 **Goal:** Side-by-side migration to a Logic Apps **Standard** project. IaC shape, on-disk layout, connection model, and local dev all change at once. The flagship cross-cutting demo.
 
+## Model guidance (largest scenario)
+
+- Use **VS Code Agent mode**.
+- Start with **GPT-4.1** and keep prompts tightly scoped by step with exact file outputs.
+- Add "simplest valid approach, no alternatives" to reduce unnecessary reasoning/output.
+
 ## Why this is a great Copilot demo
 
 A Consumption → Standard migration is **not** a 1:1 copy. It requires:

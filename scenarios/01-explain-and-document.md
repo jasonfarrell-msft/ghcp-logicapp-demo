@@ -2,6 +2,12 @@
 
 **Goal:** Generate a plain-English summary, a Mermaid diagram, and an action table from the workflow JSON — the kind of artefact teams rarely keep current by hand.
 
+## Model guidance (fast demo flow)
+
+- Use **VS Code Agent mode**.
+- Prefer **GPT-4.1** with a constrained prompt (exact file + exact output).
+- Ask for "single markdown output only, simplest valid approach."
+
 ## Prompt
 
 > Read `infra/workflows/approval.workflow.json` and produce:
