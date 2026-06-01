@@ -30,7 +30,7 @@ where a real engineer would: "what is this thing?"
 | 2 | **02 Refactor: extract sub-flows** | First real edit. Shows Copilot navigates Logic Apps schema (`Scope`, `runAfter`) and the Bicep mirror in one pass. |
 | 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
 | 4 | **04 Teams notification** | New connector end-to-end — `$connections`, Bicep mapping, action body. Demonstrates breadth, not just depth. |
-| 5 | **05 Escalation branch** | Cross-file IaC change touching workflow JSON, module, `main.bicep`, and both `.bicepparam` files. |
+| 5 | **05 Escalation branch** | Explore existing two-tier approval across five files. Shows Copilot can trace and explain cross-file features, not just build them. |
 | 6 | **06 Migrate Consumption → Standard** | Finale. The single biggest cross-cutting change Copilot can do for you here. |
 
 If short on time, cut **05** first (closest in shape to **04**).
@@ -161,15 +161,18 @@ adaptive card).
 
 ### Beat 5 — Scenario 05: Escalation branch
 
-> **Say this:** "One last in-place change before the finale. We'll add a
-> second approver tier for high-value requests — a workflow change *and*
-> two new Bicep params *and* updates to both parameter files. One prompt."
+> **Say this:** "Before the big migration, let's explore what's already here.
+> This workflow has a two-tier approval system — escalation logic that spans
+> five files. Let's ask Copilot to trace how it works, then test all three
+> approval paths: auto-approve, standard approval, and escalation."
 
 Open [`scenarios/05-add-escalation-branch.md`](./scenarios/05-add-escalation-branch.md).
 Demo all three amounts (`250`, `2500`, `15000`) to walk every branch.
 
-**Why this beat matters:** maximum cross-file fan-out for a single intent.
-If the audience needed convincing on consistency, this seals it.
+**Why this beat matters:** demonstrates Copilot's ability to explain and trace
+existing features across multiple files. Shows cross-file consistency for a
+feature that touches workflow JSON, Bicep modules, parameters, and environment
+configs. The three test amounts prove the conditional logic works correctly.
 
 ### Beat 6 — Scenario 06: Migrate Consumption → Standard (finale)
 
