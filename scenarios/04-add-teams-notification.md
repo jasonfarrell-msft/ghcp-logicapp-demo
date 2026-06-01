@@ -28,27 +28,36 @@ The workflow only sends an approval email and returns an HTTP response. There is
 
 ## Prompt
 
-> Add a Microsoft Teams adaptive card notification to the approval workflow.
-> Update `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`,
-> `infra/main.bicep`, and both `.bicepparam` files to:
+> Add a Microsoft Teams adaptive card notification to the approval workflow and change it to async processing.
+> Update `infra/workflows/approval.workflow.json` and `infra/modules/logicApp.bicep` to:
 >
-> 1. Add a `teamsConnection` resource (Microsoft Teams managed API) in the Bicep module
-> 2. Add `teamsChannelId` and `teamsGroupId` parameters threaded from main.bicep → module → workflow
-> 3. Wire the Teams connection into the workflow's `$connections` parameter
-> 4. Add a `responseStatus` variable set after the Switch resolves (approved/rejected)
-> 5. Post an adaptive card to Teams after the Switch with dynamic styling:
->    - Title: "Approval Granted ✓" (green) for approved, "Request Rejected ✗" (red/attention) for rejected
->    - A "Status" fact showing the responseStatus variable
->    - Requester, amount, description, request ID, and a link to the run
+> 1. **Return 202 Accepted immediately** after variable initialization (don't wait for approval):
+>    - Move the Response action to run right after `Initialize_responseStatus`
+>    - Status code: `202`, body: `{ "requestId": "...", "status": "processing", "message": "Approval workflow started" }`
+>    - Remove the old `Respond` Scope that waited for approval completion
+>
+> 2. **Process approval asynchronously**:
+>    - RequestApproval Scope runs after Response (no dependencies)
+>    - Add a `teamsConnection` resource (Microsoft Teams managed API) in the Bicep module
+>    - Add `teamsChannelId`, `teamsGroupId`, and `teamsTenantId` parameters threaded from main.bicep → module → workflow
+>    - Wire the Teams connection into the workflow's `$connections` parameter
+>    - Add a `responseStatus` variable set after the Switch resolves (approved/rejected)
+>
+> 3. **Post adaptive card with final outcome**:
+>    - Add `Post_adaptive_card` action after Switch_on_approver_response completes
+>    - Title: "Approval Granted ✓" (green/good) for approved, "Request Rejected ✗" (red/attention) for rejected
+>    - FactSet with: Request ID, Status (responseStatus variable), Requester, Amount, Description
+>    - Include link to the workflow run: `[View Run](@{concat('https://portal.azure.com/#view/...')})`
 >    - Use conditional expressions: `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}`
+>    - Card must post on BOTH outcomes (approved and rejected)
 >
-> Card color should be `"good"` for approved, `"attention"` for rejected. The card must post on BOTH outcomes.
+> The workflow now returns immediately, and Teams shows the final decision when it's made.
 
 ## What changes
-- **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId`/`teamsGroupId` parameters, threads Teams into `$connections`, and adds `Set_responseStatus` + `Post_adaptive_card` actions
-- **`infra/main.bicep`**: adds `teamsChannelId`/`teamsGroupId` parameters and passes them to the module
+- **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId`/`teamsGroupId`/`teamsTenantId` parameters, threads Teams into `$connections`, moves Response to return 202 immediately, adds `Set_responseStatus` + `Post_adaptive_card` actions, removes old `Respond` Scope
+- **`infra/main.bicep`**: adds `teamsChannelId`/`teamsGroupId`/`teamsTenantId` parameters and passes them to the module
 - **`infra/parameters/dev.bicepparam`** & **`prod.bicepparam`**: adds Teams ID values
-- **`infra/workflows/approval.workflow.json`**: adds `responseStatus` variable + dynamic adaptive card action posting on both approve and reject
+- **`infra/workflows/approval.workflow.json`**: adds `responseStatus` variable, moves Response to return 202 immediately after initialization, adds dynamic adaptive card action posting on both approve and reject, removes old synchronous response pattern
 
 ## Verify
 
@@ -71,14 +80,16 @@ dotnet script scripts/deploy.csx -- --environment dev
 ```bash
 # Test approved flow
 dotnet script scripts/invoke.csx -- --environment dev --amount 2500
+# Returns immediately: 202 Accepted, status: "processing"
 # Approve via email → Green "Approval Granted ✓" card appears in Teams
 
 # Test rejected flow
 dotnet script scripts/invoke.csx -- --environment dev --amount 2500
+# Returns immediately: 202 Accepted, status: "processing"
 # Reject via email → Red "Request Rejected ✗" card appears in Teams
 ```
 
-✅ Both approve and reject outcomes post adaptive cards with appropriate styling.
+✅ HTTP response returns immediately (202), and Teams cards show final outcomes when approval decisions are made.
 
 ## Talking points
 - Managed API connections (Teams, Office 365) are first-class Azure resources — declared in Bicep, authorized once per environment.
