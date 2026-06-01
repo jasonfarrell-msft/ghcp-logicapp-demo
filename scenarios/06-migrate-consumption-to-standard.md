@@ -24,66 +24,233 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 
 ## Prompts (run in order)
 
+> **Demo tip:** Keep `infra/workflows/approval.workflow.json` and
+> `infra/modules/logicApp.bicep` open in editor tabs the entire scenario.
+> Every prompt below references them, and visible tabs strongly anchor
+> Copilot to the existing Consumption shape.
+
 ### Step 1 — Plan the migration
 
 > Read `infra/workflows/approval.workflow.json` and
 > `infra/modules/logicApp.bicep`. Produce a migration plan to move this
-> Consumption Logic App to a Logic Apps **Standard** (single-tenant) project,
-> preserving the approval workflow's behavior. Cover: (a) new Azure resources
-> required, (b) on-disk file layout for the Standard project, (c) how the
-> Office 365 approval-email action should be handled (managed API connection
-> vs built-in connector), (d) how `$connections` and workflow `parameters`
-> change, (e) what local dev looks like. Save the plan to
-> `docs/migration-consumption-to-standard.md`.
+> Consumption Logic App to a Logic Apps **Standard** (single-tenant)
+> project, preserving the approval workflow's behavior **exactly** (same
+> trigger schema, same approver email, same threshold, same auto-approve
+> branch, same Office 365 approval-email step, same 200 response shape).
+>
+> Save the plan to `docs/migration-consumption-to-standard.md` with these
+> sections, in this order:
+> 1. **Resource diff** — table mapping each Consumption resource to its
+>    Standard equivalent: `Microsoft.Logic/workflows` →
+>    `Microsoft.Web/sites` (`kind: 'functionapp,workflowapp'`), plus the
+>    **new** required resources (Storage Account, App Service Plan SKU
+>    `WS1` / `kind: elastic`). Keep the Office 365
+>    `Microsoft.Web/connections` resource as-is.
+> 2. **On-disk layout** — exact file tree for `standard/` (host.json,
+>    connections.json, parameters.json, local.settings.json,
+>    `Approval/workflow.json`) and for `infra-standard/` (main.bicep,
+>    modules/logicAppStandard.bicep, parameters/dev.bicepparam,
+>    parameters/prod.bicepparam).
+> 3. **Connection model change** — explain how `$connections` in
+>    Consumption becomes a `connections.json` file at the project root in
+>    Standard, with `managedApiConnections` referencing
+>    `connectionRuntimeUrl` and an `authentication` block using
+>    `@appsetting('...')`.
+> 4. **Workflow parameters change** — show the before/after of the
+>    workflow `parameters` block (Consumption uses `$connections`;
+>    Standard's stateful workflow drops it entirely when only
+>    `connections.json` is used).
+> 5. **Runtime choice** — recommend `FUNCTIONS_WORKER_RUNTIME=node` for
+>    this demo (faster cold start, smaller image, no compile step) and
+>    note when `dotnet-isolated` would be chosen instead (custom code
+>    extensions).
+> 6. **Local dev** — bullet list of what you need installed (Azure
+>    Functions Core Tools v4, VS Code "Azure Logic Apps (Standard)"
+>    extension, Azurite for local storage) and the exact commands to run
+>    locally (`cd standard && func start`).
+> 7. **What does NOT carry over** — explicitly call out: run history is
+>    not migrated, the trigger URL changes, the managed API connection
+>    must be re-authorized after deploy.
 
-### Step 2 — Scaffold the Standard project
+### Step 2 — Scaffold the Standard project files
 
-> Create a new top-level folder `standard/` that holds a Logic Apps Standard
-> project:
-> - `standard/host.json`
-> - `standard/connections.json` (referencing an Office 365 managed API
->   connection placeholder)
-> - `standard/parameters.json`
-> - `standard/local.settings.json` (with `AzureWebJobsStorage` and
->   `WORKFLOWS_SUBSCRIPTION_ID` placeholders, marked
->   `"IsEncrypted": false`)
-> - `standard/Approval/workflow.json` — the approval workflow translated to
->   the Standard schema (stateful), reusing the trigger / actions /
->   conditions from `infra/workflows/approval.workflow.json`. Keep the
->   approval email step using the Office 365 managed API connection (do not
->   switch connectors yet — that's a follow-up).
+> Create a new top-level folder `standard/` containing exactly these files
+> with these exact contents:
+>
+> **`standard/host.json`** — minimum viable host config:
+> ```json
+> {
+>   "version": "2.0",
+>   "extensionBundle": {
+>     "id": "Microsoft.Azure.Functions.ExtensionBundle.Workflows",
+>     "version": "[1.*, 2.0.0)"
+>   }
+> }
+> ```
+>
+> **`standard/local.settings.json`** — with `IsEncrypted: false` and
+> these settings (use `UseDevelopmentStorage=true` so the demo works
+> against Azurite without a real storage account):
+> ```json
+> {
+>   "IsEncrypted": false,
+>   "Values": {
+>     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+>     "FUNCTIONS_WORKER_RUNTIME": "node",
+>     "WORKFLOWS_SUBSCRIPTION_ID": "<replace-at-deploy>",
+>     "WORKFLOWS_RESOURCE_GROUP_NAME": "<replace-at-deploy>",
+>     "WORKFLOWS_LOCATION_NAME": "eastus2",
+>     "APP_KIND": "workflowApp",
+>     "office365-ConnectionRuntimeUrl": "<set-after-deploy>"
+>   }
+> }
+> ```
+>
+> **`standard/connections.json`** — exactly one `managedApiConnections`
+> entry for Office 365, using app-setting references so the file can be
+> committed:
+> ```json
+> {
+>   "managedApiConnections": {
+>     "office365": {
+>       "api": {
+>         "id": "/subscriptions/@{appsetting('WORKFLOWS_SUBSCRIPTION_ID')}/providers/Microsoft.Web/locations/@{appsetting('WORKFLOWS_LOCATION_NAME')}/managedApis/office365"
+>       },
+>       "connection": {
+>         "id": "/subscriptions/@{appsetting('WORKFLOWS_SUBSCRIPTION_ID')}/resourceGroups/@{appsetting('WORKFLOWS_RESOURCE_GROUP_NAME')}/providers/Microsoft.Web/connections/con-office365-dev"
+>       },
+>       "connectionRuntimeUrl": "@appsetting('office365-ConnectionRuntimeUrl')",
+>       "authentication": {
+>         "type": "ManagedServiceIdentity"
+>       }
+>     }
+>   }
+> }
+> ```
+>
+> **`standard/parameters.json`** — empty workflow parameters object:
+> ```json
+> {}
+> ```
+>
+> **`standard/Approval/workflow.json`** — translate the workflow from
+> `infra/workflows/approval.workflow.json` into the Standard schema:
+> - Set `"kind": "Stateful"`.
+> - **Remove** the top-level `parameters.$connections` block entirely.
+> - Keep the `Request` trigger schema **byte-for-byte identical**.
+> - Keep the `Condition_threshold`, `Send_approval_email`,
+>   `Condition_approved`, and `Response` actions with **the same names
+>   and the same logic**.
+> - For `Send_approval_email`, change the action `type` from
+>   `ApiConnectionWebhook` to `ApiConnectionWebhook` (same) but update
+>   the `inputs.host` to reference the Standard connection model:
+>   ```json
+>   "host": {
+>     "connection": {
+>       "referenceName": "office365"
+>     }
+>   }
+>   ```
+> - Do **not** use `@parameters('$connections')` anywhere — that's
+>   Consumption-only.
 
-### Step 3 — Author Standard infra
+### Step 3 — Author Standard Bicep infrastructure
 
-> Add `infra-standard/main.bicep` and `infra-standard/modules/logicAppStandard.bicep`
-> that deploy:
-> - A Storage Account (`Standard_LRS`)
-> - An App Service Plan (`WS1`, `kind: elastic`)
-> - A `Microsoft.Web/sites` resource with `kind: 'functionapp,workflowapp'`
->   and the required app settings (`AzureWebJobsStorage`,
->   `FUNCTIONS_EXTENSION_VERSION=~4`,
->   `FUNCTIONS_WORKER_RUNTIME=node` (or `dotnet` — pick one and explain),
->   `APP_KIND=workflowApp`)
-> - Reuse the existing Office 365 `Microsoft.Web/connections` resource
->   pattern from `infra/modules/logicApp.bicep`.
-> Add `infra-standard/parameters/{dev,prod}.bicepparam` mirroring the
+> Add `infra-standard/main.bicep` and
+> `infra-standard/modules/logicAppStandard.bicep` that deploy a complete
+> Standard environment. Match the parameter shape of
+> `infra/main.bicep` (location, environmentName, approverEmail,
+> threshold) so the dev/prod `.bicepparam` files can mirror the
 > Consumption ones.
+>
+> **`infra-standard/modules/logicAppStandard.bicep` must include:**
+> 1. **Storage Account** — `Microsoft.Storage/storageAccounts@2023-01-01`,
+>    SKU `Standard_LRS`, kind `StorageV2`, name
+>    `st${replace(environmentName,'-','')}laappr` (must be globally unique
+>    and ≤24 chars lowercase).
+> 2. **App Service Plan** — `Microsoft.Web/serverfarms@2023-12-01`, SKU
+>    name `WS1`, tier `WorkflowStandard`, `kind: 'elastic'`, name
+>    `asp-la-standard-${environmentName}`.
+> 3. **Workflow App site** — `Microsoft.Web/sites@2023-12-01`,
+>    `kind: 'functionapp,workflowapp'`, name
+>    `la-approval-std-${environmentName}`, `httpsOnly: true`,
+>    `serverFarmId` pointing at the plan, with these **exact app
+>    settings** (every one of these is required — missing any will cause
+>    the site to deploy but fail to load workflows):
+>    | Name | Value |
+>    |---|---|
+>    | `AzureWebJobsStorage` | full connection string from the storage account using `listKeys()` |
+>    | `FUNCTIONS_EXTENSION_VERSION` | `~4` |
+>    | `FUNCTIONS_WORKER_RUNTIME` | `node` |
+>    | `WEBSITE_NODE_DEFAULT_VERSION` | `~20` |
+>    | `APP_KIND` | `workflowApp` |
+>    | `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING` | same as `AzureWebJobsStorage` |
+>    | `WEBSITE_CONTENTSHARE` | `la-approval-std-${environmentName}-content` |
+>    | `WORKFLOWS_SUBSCRIPTION_ID` | `subscription().subscriptionId` |
+>    | `WORKFLOWS_RESOURCE_GROUP_NAME` | `resourceGroup().name` |
+>    | `WORKFLOWS_LOCATION_NAME` | `location` |
+> 4. **Office 365 managed connection** — re-declare the same
+>    `Microsoft.Web/connections@2016-06-01` resource pattern that exists
+>    in `infra/modules/logicApp.bicep` (name `con-office365-${environmentName}`).
+>    Do **not** try to share the Consumption connection — keep them
+>    independent so the Consumption demo stays intact.
+>
+> **`infra-standard/main.bicep`** should be a thin wrapper that calls the
+> module, taking the same four parameters as `infra/main.bicep`.
+>
+> **`infra-standard/parameters/dev.bicepparam`** and
+> **`infra-standard/parameters/prod.bicepparam`** should mirror the
+> matching files under `infra/parameters/`.
+>
+> Add `@description` decorators on every parameter (match the style of
+> `infra/modules/logicApp.bicep`). Run `az bicep build --file
+> infra-standard/main.bicep` mentally and make sure it would compile.
 
-### Step 4 — (Optional) Replace managed connector with built-in
+### Step 4 — (Optional, advanced) Built-in connector swap
 
-> In `standard/Approval/workflow.json`, replace the Office 365 managed API
+> **Skip this step if running short on time.** In
+> `standard/Approval/workflow.json`, replace the Office 365 managed API
 > approval-email action with the **built-in Office 365** service-provider
-> connector if available, otherwise leave a TODO comment explaining the
-> trade-off (cost / cold start / VNet support). Update `connections.json`
-> accordingly.
+> connector if available in the current extension bundle, otherwise leave
+> a `// TODO` comment in `connections.json` explaining the trade-off:
+> - **Managed API connection** (what we have): runs out-of-process, OAuth
+>   delegated, requires a `Microsoft.Web/connections` resource.
+> - **Built-in connector**: runs in-process inside the workflow runtime,
+>   lower latency, no separate connection resource, supports VNet
+>   integration directly, but fewer auth options.
+>
+> If swapped, remove the matching entry from
+> `connections.json.managedApiConnections` and add a
+> `serviceProviderConnections` block instead.
 
-### Step 5 — Update tooling
+### Step 5 — Deploy script and README
 
-> Add a new deploy script `scripts/deploy-standard.csx` modeled on
-> `scripts/deploy.csx`. Update the root `README.md` with a new "Standard"
-> section: prerequisites (Azure Functions Core Tools v4, VS Code Logic Apps
-> Standard extension), how to run locally (`func start` from `standard/`),
-> and how to deploy.
+> Add `scripts/deploy-standard.csx` modeled on `scripts/deploy.csx`.
+> The script must:
+> 1. Parse `--environment dev|prod` exactly like `scripts/deploy.csx`.
+> 2. Run `az bicep build --file infra-standard/main.bicep`.
+> 3. Run `az deployment group create` against
+>    `infra-standard/main.bicep` with the matching `.bicepparam`.
+> 4. **After** the Bicep deploys, run `func azure functionapp publish
+>    la-approval-std-{env}` from inside the `standard/` directory to push
+>    the workflow content. Print a clear `▶ Publishing workflows...`
+>    banner before that step.
+> 5. Print the trigger callback URL at the end using
+>    `az rest --method post` against the workflow's `listCallbackUrl`
+>    action so the demo can immediately POST to it.
+>
+> Then update the root `README.md`: add a new top-level **"Standard
+> migration (Scenario 06)"** section after the existing setup, listing:
+> - Prerequisites: Azure Functions Core Tools v4
+>   (`brew install azure-functions-core-tools@4` or
+>   `npm i -g azure-functions-core-tools@4`), the VS Code "Azure Logic
+>   Apps (Standard)" extension, optionally Azurite for local dev.
+> - Local run: `cd standard && func start`, then POST to
+>   `http://localhost:7071/api/Approval/triggers/manual/invoke`.
+> - Deploy: `dotnet script scripts/deploy-standard.csx -- --environment dev`.
+> - Post-deploy: re-authorize `con-office365-dev` in the portal (separate
+>   connection from the Consumption one — same name pattern, different
+>   resource).
 
 ## What changes
 - New `docs/migration-consumption-to-standard.md` plan.

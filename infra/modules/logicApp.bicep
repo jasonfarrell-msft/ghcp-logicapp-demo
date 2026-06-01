@@ -12,7 +12,6 @@ param threshold int = 1000
 
 var workflowName   = 'la-approval-${environmentName}'
 var office365Name  = 'con-office365-${environmentName}'
-var teamsName      = 'con-teams-${environmentName}'
 
 resource office365Connection 'Microsoft.Web/connections@2016-06-01' = {
   name: office365Name
@@ -21,17 +20,6 @@ resource office365Connection 'Microsoft.Web/connections@2016-06-01' = {
     displayName: 'Office 365 Outlook (${environmentName})'
     api: {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
-    }
-  }
-}
-
-resource teamsConnection 'Microsoft.Web/connections@2016-06-01' = {
-  name: teamsName
-  location: location
-  properties: {
-    displayName: 'Microsoft Teams (${environmentName})'
-    api: {
-      id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'teams')
     }
   }
 }

@@ -1,9 +1,9 @@
-# Scenario 04 — Enhance Teams notification
+# Scenario 04 — Add Teams notification
 
-**Goal:** Update the Teams notification to post cards for **both** approve AND reject outcomes with dynamic styling and messaging.
+**Goal:** Add a Microsoft Teams adaptive card notification that posts on **both** approve AND reject outcomes with dynamic styling and messaging.
 
 ## Current state
-The workflow already posts a Teams adaptive card when requests are approved, but it only posts on approval. Rejections are silent.
+The workflow only sends an approval email and returns an HTTP response. There is no Teams integration — no Teams connection, no Teams parameters, no card posting.
 
 ## Prerequisites
 
@@ -36,31 +36,39 @@ The workflow already posts a Teams adaptive card when requests are approved, but
 
 ## Prompt
 
-> The workflow currently posts Teams adaptive cards only when requests are
-> approved. Update both `infra/workflows/approval.workflow.json` and
-> `infra/modules/logicApp.bicep` to:
-> 
-> 1. Set `shouldPostTeams=true` in BOTH the Approve and Reject cases
-> 2. Make the adaptive card dynamic based on the outcome:
->    - Title: "Approval Granted ✓" (green) for approved, "Request Rejected ✗" (red/attention) for rejected
->    - Add a "Status" fact showing the responseStatus variable value
->    - Use conditional expressions to set the text and color based on responseStatus
+> Add a Microsoft Teams adaptive card notification to the approval workflow.
+> Update `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`,
+> `infra/main.bicep`, and both `.bicepparam` files to:
 >
-> The card should show the requester, amount, description, request ID, status, and link to the run.
+> 1. Add a `teamsConnection` resource (Microsoft Teams managed API) in the Bicep module
+> 2. Add `teamsChannelId` and `teamsGroupId` parameters threaded from main.bicep → module → workflow
+> 3. Wire the Teams connection into the workflow's `$connections` parameter
+> 4. Add a `responseStatus` variable set after the Switch resolves (approved/rejected)
+> 5. Post an adaptive card to Teams after the Switch with dynamic styling:
+>    - Title: "Approval Granted ✓" (green) for approved, "Request Rejected ✗" (red/attention) for rejected
+>    - A "Status" fact showing the responseStatus variable
+>    - Requester, amount, description, request ID, and a link to the run
+>    - Use conditional expressions: `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}`
+>
+> Card color should be `"good"` for approved, `"attention"` for rejected. The card must post on BOTH outcomes.
 
 ## What changes
-- `Set_shouldPostTeams_true_reject` action added in the Reject case
-- Adaptive card `messageBody` becomes dynamic:
-  - Title uses `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}`
-  - Color uses conditional: `"good"` for approved, `"attention"` for rejected
-  - New "Status" fact shows the current responseStatus variable
-- Both workflow.json and logicApp.bicep updated with matching changes
+- **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId`/`teamsGroupId` parameters, threads Teams into `$connections`, and adds `Set_responseStatus` + `Post_adaptive_card` actions
+- **`infra/main.bicep`**: adds `teamsChannelId`/`teamsGroupId` parameters and passes them to the module
+- **`infra/parameters/dev.bicepparam`** & **`prod.bicepparam`**: adds Teams ID values
+- **`infra/workflows/approval.workflow.json`**: adds `responseStatus` variable + dynamic adaptive card action posting on both approve and reject
 
 ## Verify
 
 ```bash
 az bicep build --file infra/main.bicep
 dotnet script scripts/deploy.csx -- --environment dev
+```
+
+Then authorize the Teams connection:
+- Azure Portal → Logic App `la-approval-dev` → **API connections** → `con-teams-dev` → **Edit API connection** → **Authorize** → sign in with M365 account.
+
+```bash
 # Test approved flow
 dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 # Approve via email → Green "Approval Granted ✓" card appears in Teams
@@ -73,11 +81,11 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ✅ Both approve and reject outcomes post adaptive cards with appropriate styling.
 
 ## Talking points
+- Managed API connections (Teams, Office 365) are first-class Azure resources — declared in Bicep, authorized once per environment.
 - Logic Apps variables (`responseStatus`) can be used inside adaptive card JSON via expressions.
 - Adaptive Cards support `color` property: `"good"` (green), `"attention"` (red), `"warning"` (yellow), `"default"` (gray).
 - Conditional expressions in Logic Apps: `@{if(condition, trueValue, falseValue)}` and can be nested.
 - This pattern ensures visibility for ALL workflow outcomes, not just successful approvals.
-- One variable change (`shouldPostTeams`) gates the entire Teams notification - clean separation of concerns.
 
 ---
 **Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).

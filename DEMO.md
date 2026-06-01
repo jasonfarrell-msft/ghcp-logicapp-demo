@@ -55,9 +55,6 @@ Run these once. They survive across the whole demo.
 - [ ] `az bicep install` (or upgrade) — `az bicep version` to confirm
 - [ ] `dotnet --version` confirms the .NET 8 SDK (or newer) is on PATH
 - [ ] `dotnet tool install -g dotnet-script` (one-time; skip if already installed)
-- [ ] **Teams configuration completed** (required for Scenario 04):
-  - [ ] Teams channel ID and group ID added to `infra/parameters/dev.bicepparam`
-  - [ ] See README.md "One-time setup" section for instructions to get IDs from Teams
 - [ ] Baseline deployed:
   ```bash
   az bicep build --file infra/main.bicep
@@ -67,7 +64,6 @@ Run these once. They survive across the whole demo.
   Logic App `la-approval-dev` → API connections → authorize each deployed
   connection that the workflow uses. For the baseline, authorize:
   - [ ] `con-office365-dev` via **Edit API connection** → **Authorize**
-  - [ ] `con-teams-dev` via **Edit API connection** → **Authorize** (for Scenario 04)
 - [ ] Smoke test passes (confirms the trigger and low-amount path):
   ```bash
   dotnet script scripts/invoke.csx -- --environment dev --amount 100
@@ -79,7 +75,7 @@ Run these once. They survive across the whole demo.
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
-- [ ] (Scenario 04 only) After deploying Teams, authorize that API connection
+- [ ] (Scenario 04 only) After deploying Teams, authorize `con-teams-dev`
   before re-running `invoke.csx`.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,

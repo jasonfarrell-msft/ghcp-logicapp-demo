@@ -102,28 +102,7 @@ When VS Code opens this workspace, it also prompts for these extensions from
 
 ## One-time setup
 
-### 1. Configure Teams Integration (for Scenario 04)
-
-The approval workflow can post adaptive cards to Microsoft Teams when approvals are granted. Before deploying, configure your Teams channel and group IDs:
-
-**Get your Team (Group) ID:**
-1. Open Microsoft Teams
-2. Click "..." next to your team name → **Get link to team**
-3. Copy the `groupId` GUID from the URL (e.g., `12345678-1234-1234-1234-123456789abc`)
-
-**Get your Channel ID:**
-1. In Teams, navigate to your channel
-2. Click "..." next to the channel name → **Get link to channel**
-3. Copy the channel ID from the URL (e.g., `19:abc123...@thread.tacv2`)
-
-**Update parameter files** with your IDs:
-- Edit `infra/parameters/dev.bicepparam`
-- Edit `infra/parameters/prod.bicepparam`
-- Replace `YOUR_CHANNEL_ID_HERE` and `YOUR_TEAM_ID_HERE` with your actual values
-
-> **Note:** Teams notifications only work after you authorize the Teams API connection (see step 3 below).
-
-### 2. Deploy and Validate
+### 1. Deploy and Validate
 
 ```bash
 # Install the script runner once (skip if already installed)
@@ -145,9 +124,7 @@ Before invoking the workflow, authorize all deployed API connections in the Azur
 2. Click `con-office365-dev` → **Edit API connection** → **Authorize**
 3. Sign in with your Microsoft 365 account
 
-**Teams (required for Scenario 04):**
-1. Click `con-teams-dev` → **Edit API connection** → **Authorize**
-2. Sign in and grant permissions to post to Teams
+> **Note:** Scenario 04 adds a Teams connection (`con-teams-dev`) that will also need to be authorized after that scenario is deployed.
 
 ```
 
@@ -165,7 +142,7 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 100
 dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ```
 
-✅ Expect `HTTP 202 Accepted`, then check your email for approval. After clicking **Approve**, a Teams card should appear in your configured channel (if Scenario 04 is deployed).
+✅ Expect `HTTP 202 Accepted`, then check your email for approval.
 
 To exercise the full approval path (`--amount 2500` and above), use the Office
 365 connection authorized during setup. The invoke call returns `HTTP 202
