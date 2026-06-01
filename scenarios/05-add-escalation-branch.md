@@ -36,7 +36,7 @@ After this scenario:
 >      - Case "Reject": Set responseStatus='escalation-denied', skipApproval=true
 >      - Default: Same as Reject
 > 4. The existing standard approval logic (Send_approval_email action) should already be inside a condition that checks skipApproval==false, so it naturally skips after escalation rejection
-> 5. **Important:** Move the existing `Post_adaptive_card` action so it runs after the ENTIRE approval flow completes (not just after Switch_on_approver_response). Set its runAfter to `{ "Check_escalation_threshold": ["Succeeded"] }` so it posts the adaptive card for BOTH escalation rejections AND standard approval outcomes. The card already uses responseStatus variable, which will be set to either 'escalation-denied' (escalation rejection), 'approved' (standard approval), 'rejected' (standard rejection), or 'auto-approved' (auto-approve).
+> 5. **CRITICAL - Fixed Post_adaptive_card Timing:** The existing `Post_adaptive_card` action must run after the ENTIRE approval flow completes. **Set its runAfter to `{ "Check_skipApproval": ["Succeeded"] }`** (NOT Check_escalation_threshold). This ensures the card posts AFTER both the escalation check AND the standard approval flow complete, so responseStatus is properly set before the card displays. Without this, mid-range amounts ($1000-$10000) will post cards with empty responseStatus showing as "Request Rejected ✗" before the approval email is even sent.
 > 6. Update the adaptive card title logic to handle the escalation-denied case: Title should be "Request Escalation Denied ✗" with color "attention" when responseStatus equals 'escalation-denied', "Approval Granted ✓" (green/good) when 'approved' or 'auto-approved', and "Request Rejected ✗" (red/attention) for 'rejected'.
 > 7. Update main.bicep to add the two new parameters with @description decorators
 > 8. Update dev.bicepparam: escalationApproverEmail = 'escalation@contoso.com', escalationThreshold = 10000
@@ -79,7 +79,7 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalat
 - **Switch expressions**: The Switch condition expression is `@body('Send_escalation_email')?['SelectedOption']` (matches the standard approval pattern).
 - **Variable state**: The `skipApproval` variable must be checked before the standard approval email to prevent duplicate approvals.
 - **Nested conditionals**: You now have three levels: auto-approve check → escalation check → standard approval (only if skipApproval==false).
-- **Teams notification timing**: The `Post_adaptive_card` action must run AFTER the entire escalation + standard approval flow completes. If it only runs after `Switch_on_approver_response`, it will miss escalation rejections. Set its runAfter to the outer escalation check, not the inner standard approval switch.
+- **CRITICAL - Teams notification timing:** The `Post_adaptive_card` action must depend on `Check_skipApproval`, NOT `Check_escalation_threshold`. Set runAfter to `{ "Check_skipApproval": ["Succeeded"] }`. This ensures it waits for BOTH the escalation check AND the standard approval flow (including setting responseStatus) to complete before posting the card. If you set it to depend on `Check_escalation_threshold`, it will run in parallel with `Check_skipApproval`, causing the card to post with empty responseStatus (showing as "Request Rejected ✗") before the approval email is sent for mid-range amounts.
 - **Adaptive card conditional logic**: The title expression needs to handle 4 states (escalation-denied, rejected, approved, auto-approved). Use nested if() expressions: `@{if(equals(variables('responseStatus'), 'escalation-denied'), 'Request Escalation Denied ✗', if(or(equals(variables('responseStatus'), 'approved'), equals(variables('responseStatus'), 'auto-approved')), 'Approval Granted ✓', 'Request Rejected ✗'))}`
 
 ## Talking points
@@ -88,7 +88,7 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalat
 - **Conditional branching**: The escalation Switch demonstrates approval workflow state machines.
 - **Environment-specific thresholds**: Dev uses 10K, prod uses 25K for escalation - same logic, different risk tolerance.
 - **Multi-path notifications**: Teams adaptive card posts for all approval outcomes (4 states: escalation-denied, rejected, approved, auto-approved) with dynamic styling and content.
-- **Action sequencing**: Moving Post_adaptive_card to run after the entire approval flow (not just one switch) ensures comprehensive notification coverage.
+- **Action sequencing (Bug Fix Applied)**: The Post_adaptive_card action MUST depend on Check_skipApproval (which wraps the standard approval flow), NOT Check_escalation_threshold. This prevents the card from posting prematurely with empty responseStatus before the approval flow completes.
 
 ---
 **Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).
