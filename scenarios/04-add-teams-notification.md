@@ -23,13 +23,13 @@ The workflow only sends an approval email and returns an HTTP response. There is
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **GPT-4.1** with strict file targeting.
+- Prefer **GPT-5.3 or newer** with strict file targeting.
 - Ask for "single diff across workflow JSON + Bicep + params files, simplest valid approach."
 
 ## Prompt
 
 > Add a Microsoft Teams adaptive card notification to the approval workflow and change it to async processing.
-> Update `infra/workflows/approval.workflow.json` and `infra/modules/logicApp.bicep` to:
+> Update `infra/workflows/approval.workflow.json`, `infra/main.bicep`, `infra/modules/logicApp.bicep`, and the environment parameter files to:
 >
 > 1. **Return 202 Accepted immediately** after variable initialization (don't wait for approval):
 >    - Move the Response action to run right after `Initialize_responseStatus`
@@ -45,6 +45,14 @@ The workflow only sends an approval email and returns an HTTP response. There is
 >
 > 3. **Post adaptive card with final outcome**:
 >    - Add `Post_adaptive_card` action after Switch_on_approver_response completes
+>    - Use the Microsoft Teams connector's `PostCardToConversation` operation shape, not the Microsoft Graph channel messages path
+>    - For a Consumption Logic App `ApiConnection` action, set:
+>      - `method`: `post`
+>      - `path`: `/v1.0/teams/conversation/adaptivecard/poster/Flow%20bot/location/Channel`
+>      - `body.recipient.groupId`: `teamsGroupId`
+>      - `body.recipient.channelId`: `teamsChannelId`
+>      - `body.messageBody`: the Adaptive Card JSON serialized as a string, e.g. `string(approvalAdaptiveCard)` in Bicep
+>    - Do **not** use `/v1.0/teams/{teamId}/channels/{channelId}/messages`; that Graph-style path does not map to a Teams connector swagger operation and causes "Operation Id cannot be determined from definition and swagger"
 >    - Title: "Approval Granted ✓" (green/good) for approved, "Request Rejected ✗" (red/attention) for rejected
 >    - FactSet with: Request ID, Status (responseStatus variable), Requester, Amount, Description
 >    - Include link to the workflow run: `[View Run](@{concat('https://portal.azure.com/#view/...')})`
@@ -54,10 +62,10 @@ The workflow only sends an approval email and returns an HTTP response. There is
 > The workflow now returns immediately, and Teams shows the final decision when it's made.
 
 ## What changes
-- **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId`/`teamsGroupId`/`teamsTenantId` parameters, threads Teams into `$connections`, moves Response to return 202 immediately, adds `Set_responseStatus` + `Post_adaptive_card` actions, removes old `Respond` Scope
+- **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId`/`teamsGroupId`/`teamsTenantId` parameters, threads Teams into `$connections`, moves Response to return 202 immediately, adds `Set_responseStatus` + `Post_adaptive_card` actions, defines the Adaptive Card as an object and passes it as `string(approvalAdaptiveCard)`, removes old `Respond` Scope
 - **`infra/main.bicep`**: adds `teamsChannelId`/`teamsGroupId`/`teamsTenantId` parameters and passes them to the module
 - **`infra/parameters/dev.bicepparam`** & **`prod.bicepparam`**: adds Teams ID values
-- **`infra/workflows/approval.workflow.json`**: adds `responseStatus` variable, moves Response to return 202 immediately after initialization, adds dynamic adaptive card action posting on both approve and reject, removes old synchronous response pattern
+- **`infra/workflows/approval.workflow.json`**: adds `responseStatus` variable, moves Response to return 202 immediately after initialization, adds dynamic adaptive card action posting on both approve and reject using the `PostCardToConversation` connector path and `recipient`/`messageBody` payload, removes old synchronous response pattern
 
 ## Verify
 
@@ -93,6 +101,7 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 
 ## Talking points
 - Managed API connections (Teams, Office 365) are first-class Azure resources — declared in Bicep, authorized once per environment.
+- Teams connector actions must use connector swagger paths. `PostCardToConversation` uses `/v1.0/teams/conversation/adaptivecard/poster/Flow%20bot/location/Channel`; Graph-style channel message URLs are not valid `ApiConnection` paths.
 - Logic Apps variables (`responseStatus`) can be used inside adaptive card JSON via expressions.
 - Adaptive Cards support `color` property: `"good"` (green), `"attention"` (red), `"warning"` (yellow), `"default"` (gray).
 - Conditional expressions in Logic Apps: `@{if(condition, trueValue, falseValue)}` and can be nested.
