@@ -16,17 +16,9 @@ The workflow only sends an approval email and returns an HTTP response. There is
 
 2. **Configure Teams IDs** (let Copilot help!):
    - Paste the link to Copilot and say: "Update dev.bicepparam with these Teams IDs"
-   - Copilot will extract the channel ID and group ID and update the file automatically
+   - Copilot will extract the channel ID, group ID, and tenant ID and update the parameter files
    
-3. **Deploy the changes**:
-   ```bash
-   dotnet script scripts/deploy.csx -- --environment dev
-   ```
-
-4. **Authorize the Teams connection** in Azure Portal:
-   - Navigate to Logic App `la-approval-dev` → API connections
-   - Click `con-teams-dev` → **Edit API connection** → **Authorize**
-   - Sign in with your Microsoft 365 account
+   > **Note**: This only adds parameters — the Teams connection resource won't exist until you complete the main scenario implementation below.
 
 ## Model guidance (fast demo flow)
 
@@ -61,13 +53,21 @@ The workflow only sends an approval email and returns an HTTP response. There is
 ## Verify
 
 ```bash
+# Build and validate Bicep
 az bicep build --file infra/main.bicep
+
+# Deploy the updated infrastructure
 dotnet script scripts/deploy.csx -- --environment dev
 ```
 
-Then authorize the Teams connection:
-- Azure Portal → Logic App `la-approval-dev` → **API connections** → `con-teams-dev` → **Edit API connection** → **Authorize** → sign in with M365 account.
+**Authorize the Teams connection** (required before testing):
+- Open Azure Portal → Navigate to Logic App `la-approval-dev`
+- Go to **Development Tools** → **API connections**
+- Click `con-teams-dev` → **Edit API connection** → **Authorize**
+- Sign in with your Microsoft 365 account
+- Click **Save**
 
+**Test the workflow:**
 ```bash
 # Test approved flow
 dotnet script scripts/invoke.csx -- --environment dev --amount 2500
