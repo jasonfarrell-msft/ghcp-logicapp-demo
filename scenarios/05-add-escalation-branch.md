@@ -1,30 +1,38 @@
-# Scenario 05 — Add an escalation branch
+# Scenario 05 — Understand and test the escalation branch
 
-**Goal:** Introduce a second approver tier for high-value requests, threading the change through workflow JSON, the Bicep module, `main.bicep`, and both `.bicepparam` files.
+**Goal:** Explore the existing two-tier approval system, understand how it threads through multiple files, and test all three approval branches (auto-approve, standard, escalation).
 
-## Model guidance (cross-file-heavy scenario)
+## Current state
+The workflow already implements escalation logic:
+- Requests > `escalationThreshold` (default 10000) go to `escalationApproverEmail` first
+- If escalation approver rejects → 403 response with `"escalation-denied"`  
+- If escalation approver approves → continues to standard `approverEmail` flow
+- Parameters already defined in `main.bicep`, `logicApp.bicep`, `dev.bicepparam`, and `prod.bicepparam`
 
-- Use **VS Code Agent mode**.
-- Start with **GPT-4.1** and strict file-targeting prompts.
-- Explicitly ask for "one consolidated diff touching workflow, module, main, and both bicepparam files; simplest valid approach."
+This scenario helps you understand the cross-file consistency and test the full behavior.
 
-## Prompt
+## Model guidance (exploratory scenario)
 
-> Update `infra/workflows/approval.workflow.json` and the matching definition
-> in `infra/modules/logicApp.bicep` to add an `escalationThreshold` workflow
-> parameter (default `10000`). When `amount > escalationThreshold`, send an
-> approval email to a new `escalationApproverEmail` parameter **first**; only
-> if they approve should the original `approverEmail` flow run. If the
-> escalation approver rejects, respond `403` with status `escalation-denied`.
-> Also add `escalationApproverEmail` and `escalationThreshold` as Bicep params
-> with sensible defaults, and surface them in `dev.bicepparam` and
-> `prod.bicepparam`.
+- Use **VS Code Agent mode** with **GPT-4.1+**.
+- Ask Copilot to **explain** the escalation flow rather than build it.
+- Example prompt: "Walk me through how the escalation logic works. Show me all the places where escalationThreshold and escalationApproverEmail are defined and used."
 
-## What changes
-- New nested `If` for `amount > escalationThreshold` ahead of the existing approval branch.
-- New workflow params `escalationApproverEmail` / `escalationThreshold`.
-- Same params added to the Bicep module + both `.bicepparam` files.
-- Escalation rejection short-circuits with `HTTP 403` `"escalation-denied"`.
+## Understanding prompts
+
+> Explain how the escalation approval branch works in this workflow. Show me:
+> 1. Where `escalationThreshold` and `escalationApproverEmail` are defined (params)
+> 2. The conditional logic that checks if escalation is needed
+> 3. What happens when the escalation approver rejects vs approves
+> 4. How the `skipApproval` variable prevents duplicate approval requests
+> 5. All files that need to stay synchronized for this feature
+
+## What to explore
+- **workflow.json** `Check_escalation_threshold` If block
+- **workflow.json** `Switch_on_escalation_response` with Approve/Reject cases
+- **logicApp.bicep** inline workflow definition matches workflow.json structure
+- **main.bicep** parameter definitions with `@description` decorators
+- **dev.bicepparam** / **prod.bicepparam** different threshold values for environments
+- Variable flow: `skipApproval` → prevents standard approval after escalation rejection
 
 ## Verify
 
@@ -39,8 +47,12 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalat
 ✅ Three amounts walk all three branches.
 
 ## Talking points
-- One prompt threads a new branch through workflow JSON, Bicep module, and both parameter files.
-- Maximum cross-file fan-out for a single intent — the consistency story at its strongest.
+- **Cross-file consistency**: One feature (escalation) touches 5 files that must stay synchronized.
+- **Variable state management**: `skipApproval` acts as a circuit breaker after escalation rejection.
+- **Nested conditional logic**: `Check_escalation_threshold` AND `Check_amount_against_threshold` work together with `skipApproval==false` check.
+- **Environment-specific configuration**: `dev` uses 10000 threshold, `prod` uses 25000 - same logic, different values.
+- **Early exit pattern**: 403 response with `escalation-denied` status prevents wasted work (no standard approval email sent).
+- Copilot can trace a feature across multiple files and explain the data flow without executing code.
 
 ---
 **Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).
