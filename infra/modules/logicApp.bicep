@@ -10,18 +10,6 @@ param approverEmail string
 @description('Amount above which approval is required.')
 param threshold int = 1000
 
-@description('Email address that receives high-value escalation approvals.')
-param escalationApproverEmail string = 'escalation@contoso.com'
-
-@description('Amount above which escalation is required before the standard approval runs.')
-param escalationThreshold int = 10000
-
-@description('Microsoft Teams channel id to post adaptive cards to.')
-param teamsChannelId string = ''
-
-@description('Microsoft Teams group (team) id that owns the channel.')
-param teamsGroupId string = ''
-
 var workflowName   = 'la-approval-${environmentName}'
 var office365Name  = 'con-office365-${environmentName}'
 var teamsName      = 'con-teams-${environmentName}'
@@ -61,30 +49,7 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
             connectionName: office365Name
             id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
           }
-          teams: {
-            connectionId: teamsConnection.id
-            connectionName: teamsName
-            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'teams')
-          }
         }
-      }
-      approverEmail: {
-        value: approverEmail
-      }
-      threshold: {
-        value: threshold
-      }
-      escalationApproverEmail: {
-        value: escalationApproverEmail
-      }
-      escalationThreshold: {
-        value: escalationThreshold
-      }
-      teamsChannelId: {
-        value: teamsChannelId
-      }
-      teamsGroupId: {
-        value: teamsGroupId
       }
     }
     definition: {
@@ -94,30 +59,6 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
         '$connections': {
           defaultValue: {}
           type: 'Object'
-        }
-        approverEmail: {
-          type: 'String'
-          defaultValue: 'approver@contoso.com'
-        }
-        threshold: {
-          type: 'Int'
-          defaultValue: 1000
-        }
-        escalationApproverEmail: {
-          type: 'String'
-          defaultValue: 'escalation@contoso.com'
-        }
-        escalationThreshold: {
-          type: 'Int'
-          defaultValue: 10000
-        }
-        teamsChannelId: {
-          type: 'String'
-          defaultValue: ''
-        }
-        teamsGroupId: {
-          type: 'String'
-          defaultValue: ''
         }
       }
       triggers: {
@@ -139,361 +80,111 @@ resource approvalWorkflow 'Microsoft.Logic/workflows@2019-05-01' = {
         }
       }
       actions: {
-        Initialize_responseStatusCode: {
+        Initialize_approverEmail: {
           type: 'InitializeVariable'
           inputs: {
             variables: [
-              {
-                name: 'responseStatusCode'
-                type: 'integer'
-                value: 200
-              }
+              { name: 'approverEmail', type: 'string', value: approverEmail }
             ]
           }
           runAfter: {}
         }
-        Initialize_responseStatus: {
+        Initialize_threshold: {
           type: 'InitializeVariable'
           inputs: {
             variables: [
-              {
-                name: 'responseStatus'
-                type: 'string'
-                value: 'auto-approved'
-              }
+              { name: 'threshold', type: 'integer', value: threshold }
             ]
           }
-          runAfter: { Initialize_responseStatusCode: [ 'Succeeded' ] }
+          runAfter: { Initialize_approverEmail: [ 'Succeeded' ] }
         }
-        Initialize_shouldPostTeams: {
-          type: 'InitializeVariable'
-          inputs: {
-            variables: [
-              {
-                name: 'shouldPostTeams'
-                type: 'boolean'
-                value: false
-              }
-            ]
-          }
-          runAfter: { Initialize_responseStatus: [ 'Succeeded' ] }
-        }
-        Initialize_skipApproval: {
-          type: 'InitializeVariable'
-          inputs: {
-            variables: [
-              {
-                name: 'skipApproval'
-                type: 'boolean'
-                value: false
-              }
-            ]
-          }
-          runAfter: { Initialize_shouldPostTeams: [ 'Succeeded' ] }
-        }
-        Respond_202_if_approval_required: {
+        Check_amount_against_threshold: {
           type: 'If'
           expression: {
             and: [
-              { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
+              { greater: [ '@triggerBody()?[\'amount\']', '@variables(\'threshold\')' ] }
             ]
           }
           actions: {
-            Respond_202_accepted: {
-              type: 'Response'
-              kind: 'Http'
-              inputs: {
-                statusCode: 202
-                body: {
-                  requestId: '@triggerBody()?[\'requestId\']'
-                  status: 'accepted'
-                  message: 'Approval workflow started. The request will continue asynchronously.'
-                }
-              }
-              runAfter: {}
-            }
-          }
-          else: {
-            actions: {}
-          }
-          runAfter: { Initialize_skipApproval: [ 'Succeeded' ] }
-        }
-        RequestApproval: {
-          type: 'Scope'
-          actions: {
-            Check_escalation_threshold: {
-              type: 'If'
-              expression: {
-                and: [
-                  { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
-                  { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'escalationThreshold\')' ] }
-                ]
-              }
-              actions: {
-                Send_escalation_email: {
-                  type: 'ApiConnectionWebhook'
-                  inputs: {
-                    host: {
-                      connection: { name: '@parameters(\'$connections\')[\'office365\'][\'connectionId\']' }
-                    }
-                    path: '/approvalmail/$subscriptions'
-                    body: {
-                      NotificationUrl: '@{listCallbackUrl()}'
-                      Message: {
-                        To: '@parameters(\'escalationApproverEmail\')'
-                        Subject: 'ESCALATION: high-value approval needed for @{triggerBody()?[\'requestId\']}'
-                        Options: 'Approve, Reject'
-                        Body: 'Requester: @{triggerBody()?[\'requester\']}\nAmount: @{triggerBody()?[\'amount\']}\nDescription: @{triggerBody()?[\'description\']}'
-                      }
-                    }
-                    retryPolicy: {
-                      type: 'exponential'
-                      count: 4
-                      interval: 'PT10S'
-                    }
-                  }
-                  runAfter: {}
-                }
-                Switch_on_escalation_response: {
-                  type: 'Switch'
-                  expression: '@body(\'Send_escalation_email\')?[\'SelectedOption\']'
-                  cases: {
-                    Approve: {
-                      case: 'Approve'
-                      actions: {}
-                    }
-                    Reject: {
-                      case: 'Reject'
-                      actions: {
-                        Set_skipApproval_true: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'skipApproval'
-                            value: true
-                          }
-                          runAfter: {}
-                        }
-                        Set_responseStatusCode_403: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'responseStatusCode'
-                            value: 403
-                          }
-                          runAfter: { Set_skipApproval_true: [ 'Succeeded' ] }
-                        }
-                        Set_responseStatus_escalation_denied: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'responseStatus'
-                            value: 'escalation-denied'
-                          }
-                          runAfter: { Set_responseStatusCode_403: [ 'Succeeded' ] }
-                        }
-                      }
-                    }
-                  }
-                  default: { actions: {} }
-                  runAfter: { Send_escalation_email: [ 'Succeeded' ] }
-                }
-              }
-              else: {
-                actions: {}
-              }
-              runAfter: {}
-            }
-            Check_amount_against_threshold: {
-              type: 'If'
-              expression: {
-                and: [
-                  { greater: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
-                  { equals: [ '@variables(\'skipApproval\')', false ] }
-                ]
-              }
-              actions: {
-                Send_approval_email: {
-                  type: 'ApiConnectionWebhook'
-                  inputs: {
-                    host: {
-                      connection: { name: '@parameters(\'$connections\')[\'office365\'][\'connectionId\']' }
-                    }
-                    path: '/approvalmail/$subscriptions'
-                    body: {
-                      NotificationUrl: '@{listCallbackUrl()}'
-                      Message: {
-                        To: '@parameters(\'approverEmail\')'
-                        Subject: 'Approval needed for request @{triggerBody()?[\'requestId\']}'
-                        Options: 'Approve, Reject'
-                        Body: 'Requester: @{triggerBody()?[\'requester\']}\nAmount: @{triggerBody()?[\'amount\']}\nDescription: @{triggerBody()?[\'description\']}'
-                      }
-                    }
-                    retryPolicy: {
-                      type: 'exponential'
-                      count: 4
-                      interval: 'PT10S'
-                    }
-                  }
-                  runAfter: {}
-                }
-                Switch_on_approver_response: {
-                  type: 'Switch'
-                  expression: '@body(\'Send_approval_email\')?[\'SelectedOption\']'
-                  cases: {
-                    Approve: {
-                      case: 'Approve'
-                      actions: {
-                        Set_responseStatus_approved: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'responseStatus'
-                            value: 'approved'
-                          }
-                          runAfter: {}
-                        }
-                        Set_shouldPostTeams_true: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'shouldPostTeams'
-                            value: true
-                          }
-                          runAfter: { Set_responseStatus_approved: [ 'Succeeded' ] }
-                        }
-                      }
-                    }
-                    Reject: {
-                      case: 'Reject'
-                      actions: {
-                        Set_responseStatus_rejected: {
-                          type: 'SetVariable'
-                          inputs: {
-                            name: 'responseStatus'
-                            value: 'rejected'
-                          }
-                          runAfter: {}
-                        }
-                      }
-                    }
-                  }
-                  default: {
-                    actions: {
-                      Set_responseStatus_rejected_default: {
-                        type: 'SetVariable'
-                        inputs: {
-                          name: 'responseStatus'
-                          value: 'rejected'
-                        }
-                        runAfter: {}
-                      }
-                    }
-                  }
-                  runAfter: { Send_approval_email: [ 'Succeeded' ] }
-                }
-              }
-              else: { actions: {} }
-              runAfter: { Check_escalation_threshold: [ 'Succeeded' ] }
-            }
-          }
-          runAfter: { Respond_202_if_approval_required: [ 'Succeeded' ] }
-        }
-        Respond: {
-          type: 'If'
-          expression: {
-            and: [
-              { lessOrEquals: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
-            ]
-          }
-          actions: {
-            Respond_http: {
-              type: 'Response'
-              kind: 'Http'
-              inputs: {
-                statusCode: '@variables(\'responseStatusCode\')'
-                body: {
-                  requestId: '@triggerBody()?[\'requestId\']'
-                  status: '@variables(\'responseStatus\')'
-                }
-              }
-              runAfter: {}
-            }
-          }
-          else: {
-            actions: {}
-          }
-          runAfter: { RequestApproval: [ 'Succeeded' ] }
-        }
-        Post_adaptive_card_to_Teams_if_needed: {
-          type: 'If'
-          expression: {
-            and: [
-              { equals: [ '@variables(\'shouldPostTeams\')', true ] }
-            ]
-          }
-          actions: {
-            Post_adaptive_card_to_Teams: {
-              type: 'ApiConnection'
+            Send_approval_email: {
+              type: 'ApiConnectionWebhook'
               inputs: {
                 host: {
-                  connection: { name: '@parameters(\'$connections\')[\'teams\'][\'connectionId\']' }
+                  connection: { name: '@parameters(\'$connections\')[\'office365\'][\'connectionId\']' }
                 }
-                method: 'post'
-                path: '/v1.0/teams/conversation/adaptivecard/poster/Flow bot/location/@{encodeURIComponent(encodeURIComponent(json(concat(\'{"groupId":"\',parameters(\'teamsGroupId\'),\'","channelId":"\',parameters(\'teamsChannelId\'),\'"}\'))))}'
+                path: '/approvalmail/$subscriptions'
                 body: {
-                  messageBody: '{"type":"AdaptiveCard","$schema":"http://adaptivecards.io/schemas/adaptive-card.json","version":"1.4","body":[{"type":"TextBlock","size":"Medium","weight":"Bolder","text":"Approval granted"},{"type":"FactSet","facts":[{"title":"Request","value":"@{triggerBody()?[\'requestId\']}"},{"title":"Requester","value":"@{triggerBody()?[\'requester\']}"},{"title":"Amount","value":"@{triggerBody()?[\'amount\']}"},{"title":"Description","value":"@{triggerBody()?[\'description\']}"}]}],"actions":[{"type":"Action.OpenUrl","title":"View run","url":"@{concat(\'https://portal.azure.com/#resource\', workflow().id, \'/runs/\', workflow().run.name)}"}]}'
+                  NotificationUrl: '@{listCallbackUrl()}'
+                  Message: {
+                    To: '@variables(\'approverEmail\')'
+                    Subject: 'Approval needed for request @{triggerBody()?[\'requestId\']}'
+                    Options: 'Approve, Reject'
+                    Body: 'Requester: @{triggerBody()?[\'requester\']}\nAmount: @{triggerBody()?[\'amount\']}\nDescription: @{triggerBody()?[\'description\']}'
+                  }
                 }
               }
               runAfter: {}
+            }
+            Switch_on_approver_response: {
+              type: 'Switch'
+              expression: '@body(\'Send_approval_email\')?[\'SelectedOption\']'
+              cases: {
+                Approve: {
+                  case: 'Approve'
+                  actions: {
+                    Respond_approved: {
+                      type: 'Response'
+                      kind: 'Http'
+                      inputs: {
+                        statusCode: 200
+                        body: {
+                          requestId: '@triggerBody()?[\'requestId\']'
+                          status: 'approved'
+                        }
+                      }
+                      runAfter: {}
+                    }
+                  }
+                }
+                Reject: {
+                  case: 'Reject'
+                  actions: {
+                    Respond_rejected: {
+                      type: 'Response'
+                      kind: 'Http'
+                      inputs: {
+                        statusCode: 200
+                        body: {
+                          requestId: '@triggerBody()?[\'requestId\']'
+                          status: 'rejected'
+                        }
+                      }
+                      runAfter: {}
+                    }
+                  }
+                }
+              }
+              default: { actions: {} }
+              runAfter: { Send_approval_email: [ 'Succeeded' ] }
             }
           }
           else: {
-            actions: {}
-          }
-          runAfter: { RequestApproval: [ 'Succeeded' ] }
-        }
-        HandleFailure: {
-          type: 'Scope'
-          actions: {
-            Dead_letter_post: {
-              type: 'Http'
-              inputs: {
-                method: 'POST'
-                uri: 'https://example.com/dead-letter'
-                headers: { 'Content-Type': 'application/json' }
-                body: {
-                  runId: '@{workflow().run.id}'
-                  workflowName: '@{workflow().name}'
-                  trigger: '@triggerBody()'
-                }
-              }
-              runAfter: { Respond_502_if_no_early_response: [ 'Succeeded' ] }
-            }
-            Respond_502_if_no_early_response: {
-              type: 'If'
-              expression: {
-                and: [
-                  { lessOrEquals: [ '@triggerBody()?[\'amount\']', '@parameters(\'threshold\')' ] }
-                ]
-              }
-              actions: {
-                Respond_502: {
-                  type: 'Response'
-                  kind: 'Http'
-                  inputs: {
-                    statusCode: 502
-                    body: {
-                      requestId: '@triggerBody()?[\'requestId\']'
-                      status: 'approval-failed'
-                      runId: '@{workflow().run.id}'
-                    }
+            actions: {
+              Respond_auto_approved: {
+                type: 'Response'
+                kind: 'Http'
+                inputs: {
+                  statusCode: 200
+                  body: {
+                    requestId: '@triggerBody()?[\'requestId\']'
+                    status: 'auto-approved'
                   }
-                  runAfter: {}
                 }
+                runAfter: {}
               }
-              else: {
-                actions: {}
-              }
-              runAfter: {}
             }
           }
-          runAfter: { RequestApproval: [ 'Failed', 'TimedOut' ] }
+          runAfter: { Initialize_threshold: [ 'Succeeded' ] }
         }
       }
       outputs: {}

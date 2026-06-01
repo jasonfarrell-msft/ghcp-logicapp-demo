@@ -1,58 +1,82 @@
-# Scenario 05 — Understand and test the escalation branch
+# Scenario 05 — Add escalation approval tier
 
-**Goal:** Explore the existing two-tier approval system, understand how it threads through multiple files, and test all three approval branches (auto-approve, standard, escalation).
+**Goal:** Add a second approval tier for high-value requests. Requests above an escalation threshold go to a senior approver first, then continue to the standard approver if escalation is approved (or stop with 403 if rejected).
 
 ## Current state
-The workflow already implements escalation logic:
-- Requests > `escalationThreshold` (default 10000) go to `escalationApproverEmail` first
-- If escalation approver rejects → 403 response with `"escalation-denied"`  
-- If escalation approver approves → continues to standard `approverEmail` flow
-- Parameters already defined in `main.bicep`, `logicApp.bicep`, `dev.bicepparam`, and `prod.bicepparam`
+The workflow has a single approval tier:
+- Amount < threshold → auto-approve (200 response)
+- Amount ≥ threshold → email to `approverEmail`, respond with approve/reject status
 
-This scenario helps you understand the cross-file consistency and test the full behavior.
+## Success criteria
+After this scenario:
+- New workflow parameters: `escalationApproverEmail` (string, default 'escalation@contoso.com'), `escalationThreshold` (int, default 10000)
+- New logic: If amount > escalationThreshold → send escalation email first
+- If escalation approver **rejects** → 403 response with `"escalation-denied"` status (no standard approval needed)
+- If escalation approver **approves** → set `skipApproval=false` and continue to standard approval flow
+- Standard approval logic runs only if `skipApproval==false` (preserves auto-approve and handles escalation rejection)
+- Test all three paths: auto-approve (< threshold), standard approval (≥ threshold, < escalation), escalation (≥ escalation)
 
-## Model guidance (exploratory scenario)
+## Model guidance
 
 - Use **VS Code Agent mode** with **GPT-4.1+**.
-- Ask Copilot to **explain** the escalation flow rather than build it.
-- Example prompt: "Walk me through how the escalation logic works. Show me all the places where escalationThreshold and escalationApproverEmail are defined and used."
+- Provide full context: reference `infra/workflows/approval.workflow.json` and `infra/modules/logicApp.bicep`.
+- This is a **cross-file change**: workflow JSON, Bicep module, main.bicep, and both .bicepparam files.
 
-## Understanding prompts
+## Example prompt
 
-> Explain how the escalation approval branch works in this workflow. Show me:
-> 1. Where `escalationThreshold` and `escalationApproverEmail` are defined (params)
-> 2. The conditional logic that checks if escalation is needed
-> 3. What happens when the escalation approver rejects vs approves
-> 4. How the `skipApproval` variable prevents duplicate approval requests
-> 5. All files that need to stay synchronized for this feature
+> Add a second approval tier for high-value requests:
+> 
+> 1. Add two new workflow parameters: `escalationApproverEmail` (string, default 'escalation@contoso.com') and `escalationThreshold` (int, default 10000)
+> 2. After the existing "Check_amount_against_threshold" If block (that sets skipApproval for auto-approve), add a new If condition "Check_escalation_threshold" that checks if amount > escalationThreshold
+> 3. In the TRUE branch of "Check_escalation_threshold":
+>    - Add action "Send_escalation_email" (Office 365 ApiConnectionWebhook, "Send approval email", same structure as existing approval email but To: escalationApproverEmail)
+>    - Add Switch condition "Switch_on_escalation_response" on the escalation approval response SelectedOption:
+>      - Case "Approve": Do nothing (continues to standard flow)
+>      - Case "Reject": Set responseStatus='escalation-denied', skipApproval=true
+>      - Default: Same as Reject
+> 4. The existing standard approval logic (Send_approval_email action) should already be inside a condition that checks skipApproval==false, so it naturally skips after escalation rejection
+> 5. Update main.bicep to add the two new parameters with @description decorators
+> 6. Update dev.bicepparam: escalationApproverEmail = 'escalation@contoso.com', escalationThreshold = 10000
+> 7. Update prod.bicepparam: escalationApproverEmail = 'cfo-approvals@contoso.com', escalationThreshold = 25000
+> 
+> Maintain the existing retryPolicy, HandleFailure scope, and all error handling patterns.
 
-## What to explore
-- **workflow.json** `Check_escalation_threshold` If block
-- **workflow.json** `Switch_on_escalation_response` with Approve/Reject cases
-- **logicApp.bicep** inline workflow definition matches workflow.json structure
-- **main.bicep** parameter definitions with `@description` decorators
-- **dev.bicepparam** / **prod.bicepparam** different threshold values for environments
-- Variable flow: `skipApproval` → prevents standard approval after escalation rejection
+## Implementation notes
+- The escalation check should come **after** the auto-approve check and **before** the standard approval email
+- Both the escalation email and standard approval email need the same retryPolicy configuration
+- The `skipApproval` variable acts as a circuit breaker: set to true in three places (auto-approve, escalation rejection, within HandleFailure)
+- The escalation Switch should handle Approve/Reject/Default cases explicitly
+- This touches 5 files total: workflow.json, logicApp.bicep, main.bicep, dev.bicepparam, prod.bicepparam
 
 ## Verify
 
 ```bash
+# Rebuild and deploy with new parameters
 az bicep build --file infra/main.bicep
 dotnet script scripts/deploy.csx -- --environment dev
-dotnet script scripts/invoke.csx -- --environment dev --amount 250     # auto-approved
-dotnet script scripts/invoke.csx -- --environment dev --amount 2500    # single approver
-dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalation first
+
+# Test all three approval paths
+dotnet script scripts/invoke.csx -- --environment dev --amount 250     # auto-approve (< 1000)
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500    # standard approval (≥ 1000, < 10000)
+dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalation tier (≥ 10000)
 ```
 
-✅ Three amounts walk all three branches.
+✅ **Success indicators:**
+- 250: 200 response, `responseStatus: "auto-approved"`
+- 2500: Email to approverEmail only (no escalation)
+- 15000: Email to escalation@contoso.com first, then approverEmail if approved
+
+## Gotchas
+- **Cross-file consistency**: All 5 files must stay in sync. If you add a parameter to main.bicep, it must appear in both .bicepparam files.
+- **Switch expressions**: The Switch condition expression is `@body('Send_escalation_email')?['SelectedOption']` (matches the standard approval pattern).
+- **Variable state**: The `skipApproval` variable must be checked before the standard approval email to prevent duplicate approvals.
+- **Nested conditionals**: You now have three levels: auto-approve check → escalation check → standard approval (only if skipApproval==false).
 
 ## Talking points
-- **Cross-file consistency**: One feature (escalation) touches 5 files that must stay synchronized.
-- **Variable state management**: `skipApproval` acts as a circuit breaker after escalation rejection.
-- **Nested conditional logic**: `Check_escalation_threshold` AND `Check_amount_against_threshold` work together with `skipApproval==false` check.
-- **Environment-specific configuration**: `dev` uses 10000 threshold, `prod` uses 25000 - same logic, different values.
-- **Early exit pattern**: 403 response with `escalation-denied` status prevents wasted work (no standard approval email sent).
-- Copilot can trace a feature across multiple files and explain the data flow without executing code.
+- **Progressive enhancement**: Each scenario adds a new capability without breaking prior work.
+- **Cross-file orchestration**: Copilot can coordinate changes across workflow JSON, Bicep, and parameter files in one go.
+- **Conditional branching**: The escalation Switch demonstrates approval workflow state machines.
+- **Environment-specific thresholds**: Dev uses 10K, prod uses 25K for escalation - same logic, different risk tolerance.
 
 ---
 **Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).

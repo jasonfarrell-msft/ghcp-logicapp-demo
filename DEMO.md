@@ -159,20 +159,24 @@ Make sure the Teams connection is authorized before you re-invoke.
 generalises to a different connector with a more verbose payload (the
 adaptive card).
 
-### Beat 5 — Scenario 05: Escalation branch
+### Beat 5 — Scenario 05: Add escalation branch
 
-> **Say this:** "Before the big migration, let's explore what's already here.
-> This workflow has a two-tier approval system — escalation logic that spans
-> five files. Let's ask Copilot to trace how it works, then test all three
-> approval paths: auto-approve, standard approval, and escalation."
+> **Say this:** "Almost there. Let's add a second approver tier for really
+> high-value requests — above 10K goes to escalation@contoso.com first. If
+> they reject, we stop. If they approve, we continue to the standard
+> approver. This is the cross-file coordination story at its best — five
+> files that all have to agree."
 
 Open [`scenarios/05-add-escalation-branch.md`](./scenarios/05-add-escalation-branch.md).
-Demo all three amounts (`250`, `2500`, `15000`) to walk every branch.
+After Copilot adds the escalation logic, demo all three amounts (`250`,
+`2500`, `15000`) to prove all three branches work.
 
-**Why this beat matters:** demonstrates Copilot's ability to explain and trace
-existing features across multiple files. Shows cross-file consistency for a
-feature that touches workflow JSON, Bicep modules, parameters, and environment
-configs. The three test amounts prove the conditional logic works correctly.
+**Why this beat matters:** demonstrates cross-file IaC orchestration. One
+feature request touches 5 files (workflow JSON, Bicep module, main.bicep,
+dev.bicepparam, prod.bicepparam) with environment-specific thresholds. The
+three test amounts prove the three-tier conditional logic (auto-approve <
+threshold, standard approval < escalation, escalation approval ≥ escalation)
+works correctly.
 
 ### Beat 6 — Scenario 06: Migrate Consumption → Standard (finale)
 
