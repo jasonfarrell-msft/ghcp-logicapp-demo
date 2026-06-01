@@ -55,6 +55,9 @@ Run these once. They survive across the whole demo.
 - [ ] `az bicep install` (or upgrade) — `az bicep version` to confirm
 - [ ] `dotnet --version` confirms the .NET 8 SDK (or newer) is on PATH
 - [ ] `dotnet tool install -g dotnet-script` (one-time; skip if already installed)
+- [ ] **Teams configuration completed** (required for Scenario 04):
+  - [ ] Teams channel ID and group ID added to `infra/parameters/dev.bicepparam`
+  - [ ] See README.md "One-time setup" section for instructions to get IDs from Teams
 - [ ] Baseline deployed:
   ```bash
   az bicep build --file infra/main.bicep
@@ -62,8 +65,9 @@ Run these once. They survive across the whole demo.
   ```
 - [ ] **Authorize deployed API connections before running invoke**:
   Logic App `la-approval-dev` → API connections → authorize each deployed
-  connection that the workflow uses. For the baseline, authorize
-  `con-office365-dev` via **Edit API connection** → **Authorize**.
+  connection that the workflow uses. For the baseline, authorize:
+  - [ ] `con-office365-dev` via **Edit API connection** → **Authorize**
+  - [ ] `con-teams-dev` via **Edit API connection** → **Authorize** (for Scenario 04)
 - [ ] Smoke test passes (confirms the trigger and low-amount path):
   ```bash
   dotnet script scripts/invoke.csx -- --environment dev --amount 100
@@ -238,7 +242,17 @@ dotnet script scripts/invoke.csx -- --trigger-url 'https://...&sig=...'
 
 `invoke.csx` warns when the `sig=` parameter is missing.
 
-### 4. Scenario 06 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
+### 4. Teams notification doesn't appear (Scenario 04)
+
+**Cause:** Teams connection not authorized OR channel/group IDs not configured.
+
+**Fix:**
+- Portal → Logic App → API connections → `con-teams-dev` → **Edit API connection** → **Authorize**
+- Verify `infra/parameters/dev.bicepparam` has actual Teams IDs (not `YOUR_CHANNEL_ID_HERE`)
+- See README.md \"One-time setup\" section for instructions to get IDs from Teams
+- Redeploy after updating IDs: `dotnet script scripts/deploy.csx -- --environment dev`
+
+### 5. Scenario 06 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
 
 **Cause:** the subscription has zero `WorkflowStandard` (WS1) VM quota.
 Standard Logic Apps run on a dedicated App Service Plan and consume quota
