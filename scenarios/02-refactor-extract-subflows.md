@@ -5,7 +5,7 @@
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **GPT-4.1** with strict file targeting.
+- Prefer **Claude Sonnet 4.5** with strict file targeting.
 - Ask for "one combined diff across both files, minimal explanation, simplest valid approach."
 
 ## Prompt

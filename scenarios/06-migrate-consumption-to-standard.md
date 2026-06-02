@@ -5,7 +5,7 @@
 ## Model guidance (largest scenario)
 
 - Use **VS Code Agent mode**.
-- Start with **GPT-4.1** and keep prompts tightly scoped by step with exact file outputs.
+- Start with **Claude Sonnet 4.5** and keep prompts tightly scoped by step with exact file outputs.
 - Add "simplest valid approach, no alternatives" to reduce unnecessary reasoning/output.
 
 ## Why this is a great Copilot demo

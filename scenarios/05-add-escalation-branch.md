@@ -1,94 +1,103 @@
-# Scenario 05 — Add escalation approval tier
+# Scenario 05 — Add an escalation tier for high-value requests
 
-**Goal:** Add a second approval tier for high-value requests. Requests above an escalation threshold go to a senior approver first, then continue to the standard approver if escalation is approved (or stop with 403 if rejected).
+**Goal:** Add a second approval tier so that **really expensive** requests need a senior approver first. The Teams card you already built in Scenario 04 should also show the escalation outcome.
+
+> 💡 **Demo framing:** This scenario is meant to feel like a *business rule change* — "the CFO wants a sign-off above $10K." You shouldn't need to know Logic Apps internals to ship it. Let Copilot do the wiring.
 
 ## Current state
-The workflow has a single approval tier:
-- Amount < threshold → auto-approve (200 response)
-- Amount ≥ threshold → email to `approverEmail`, respond with approve/reject status
+After Scenario 04, the workflow:
+- Auto-approves when amount is below the threshold
+- Otherwise emails the standard approver and posts a Teams card with the result
 
-## Success criteria
-After this scenario:
-- New workflow parameters: `escalationApproverEmail` (string, default 'escalation@contoso.com'), `escalationThreshold` (int, default 10000)
-- New logic: If amount > escalationThreshold → send escalation email first
-- If escalation approver **rejects** → set responseStatus to `"escalation-denied"`, skipApproval=true, and **post adaptive card to Teams showing escalation denial**
-- If escalation approver **approves** → set `skipApproval=false` and continue to standard approval flow
-- Standard approval logic runs only if `skipApproval==false` (preserves auto-approve and handles escalation rejection)
-- **Teams adaptive card posts for all outcomes:** escalation-denied (red), approved (green), rejected (red), auto-approved (green)
-- Test all three paths: auto-approve (< threshold), standard approval (≥ threshold, < escalation), escalation (≥ escalation)
+There is **one** approver and **one** threshold.
+
+## What we want
+- A new "escalation" tier on top of the existing flow
+- Above an **escalation threshold**, a senior approver gets the email *first*
+  - If they **reject**, the request stops there and the Teams card shows it was denied at escalation
+  - If they **approve**, the workflow continues to the existing standard approval flow as it does today
+- Auto-approve below the normal threshold still works exactly as before
+- **Every non-auto-approved outcome ends with a Teams card** — approved, rejected, or escalation-denied
+
+## Reusing what's already there (important)
+You do **not** need to add a new Teams connection, new channel/group IDs, or touch any of the Teams parameters from Scenario 04. The `Post_adaptive_card` action already exists and is already wired to your channel. We're just going to:
+
+1. Add new parameters for the escalation approver and threshold
+2. Add a branch in the workflow that runs *before* the existing approval logic
+3. Tweak the existing Teams card title so it has a third state: "escalation-denied"
+
+That's it. No new IDs, no new connections, no re-pasting Teams channel links.
 
 ## Model guidance
 
-- Use **VS Code Agent mode** with **GPT-4.1+**.
-- Provide full context: reference `infra/workflows/approval.workflow.json` and `infra/modules/logicApp.bicep`.
-- This is a **cross-file change**: workflow JSON, Bicep module, main.bicep, and both .bicepparam files.
+- Use **VS Code Agent mode** with **Claude Sonnet 4.5**.
+- Add these to context: `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`, `infra/main.bicep`, and both `.bicepparam` files.
+- Ask for one consolidated diff across all of them.
 
-## Example prompt
+## Prompt (copy/paste)
 
-> Add a second approval tier for high-value requests:
-> 
-> 1. Add two new workflow parameters: `escalationApproverEmail` (string, default 'escalation@contoso.com') and `escalationThreshold` (int, default 10000)
-> 2. After the existing "Check_amount_against_threshold" If block (that sets skipApproval for auto-approve), add a new If condition "Check_escalation_threshold" that checks if amount > escalationThreshold
-> 3. In the TRUE branch of "Check_escalation_threshold":
->    - Add action "Send_escalation_email" (Office 365 ApiConnectionWebhook, "Send approval email", same structure as existing approval email but To: escalationApproverEmail)
->    - Add Switch condition "Switch_on_escalation_response" on the escalation approval response SelectedOption:
->      - Case "Approve": Do nothing (continues to standard flow)
->      - Case "Reject": Set responseStatus='escalation-denied', skipApproval=true
->      - Default: Same as Reject
-> 4. The existing standard approval logic (Send_approval_email action) should already be inside a condition that checks skipApproval==false, so it naturally skips after escalation rejection
-> 5. **CRITICAL - Fixed Post_adaptive_card Timing:** The existing `Post_adaptive_card` action must run after the ENTIRE approval flow completes. **Set its runAfter to `{ "Check_skipApproval": ["Succeeded"] }`** (NOT Check_escalation_threshold). This ensures the card posts AFTER both the escalation check AND the standard approval flow complete, so responseStatus is properly set before the card displays. Without this, mid-range amounts ($1000-$10000) will post cards with empty responseStatus showing as "Request Rejected ✗" before the approval email is even sent.
-> 6. Update the adaptive card title logic to handle the escalation-denied case: Title should be "Request Escalation Denied ✗" with color "attention" when responseStatus equals 'escalation-denied', "Approval Granted ✓" (green/good) when 'approved' or 'auto-approved', and "Request Rejected ✗" (red/attention) for 'rejected'.
-> 7. Update main.bicep to add the two new parameters with @description decorators
-> 8. Update dev.bicepparam: escalationApproverEmail = 'escalation@contoso.com', escalationThreshold = 10000
-> 9. Update prod.bicepparam: escalationApproverEmail = 'cfo-approvals@contoso.com', escalationThreshold = 25000
-> 
-> Maintain the existing retryPolicy, HandleFailure scope, and all error handling patterns. Ensure Teams notifications work for all outcomes: escalation-denied, approved, rejected, and auto-approved.
+> I want to add a high-value escalation tier to my approval workflow. Please update the workflow JSON, the Bicep module, `main.bicep`, and both `.bicepparam` files together.
+>
+> **New parameters** (thread them through `main.bicep` → `logicApp.bicep` → workflow, just like the existing `approverEmail` and `threshold`):
+> - `escalationApproverEmail` (string) — dev: `escalation@contoso.com`, prod: `cfo-approvals@contoso.com`
+> - `escalationThreshold` (int) — dev: `10000`, prod: `25000`
+>
+> **New behavior:**
+> - If `amount > escalationThreshold`, send the approval email to `escalationApproverEmail` **first**.
+>   - If they **reject** → set `responseStatus` to `escalation-denied`, skip the standard approval, and let the existing Teams card post.
+>   - If they **approve** → fall through to the existing standard approval flow unchanged.
+> - If `amount <= escalationThreshold`, the workflow behaves exactly like today.
+>
+> **Teams card:** keep the existing `Post_adaptive_card` action and its existing connection — do not add a new Teams connection or change the channel/group/tenant parameters. Just update the card's title expression to handle a third state:
+> - `approved` or `auto-approved` → "Approval Granted ✓" (good)
+> - `rejected` → "Request Rejected ✗" (attention)
+> - `escalation-denied` → "Escalation Denied ✗" (attention)
+>
+> Make sure the Teams card runs after the **whole** approval flow has finished (including the escalation branch), so `responseStatus` is set before the card is built. Reuse the same `skipApproval` pattern the workflow already uses for auto-approve — don't invent a new one.
+>
+> Please keep retry policies, error handling, and the existing `HandleFailure` scope intact.
 
-## Implementation notes
-- The escalation check should come **after** the auto-approve check and **before** the standard approval email
-- Both the escalation email and standard approval email need the same retryPolicy configuration
-- The `skipApproval` variable acts as a circuit breaker: set to true in three places (auto-approve, escalation rejection, within HandleFailure)
-- The escalation Switch should handle Approve/Reject/Default cases explicitly
-- **Teams notification positioning:** The `Post_adaptive_card` action must run after the entire approval flow (escalation + standard) completes, not just after the standard approval switch. This ensures it captures escalation rejections.
-- **Adaptive card title logic:** Must handle four responseStatus values: 'escalation-denied' (red/attention), 'rejected' (red/attention), 'approved' (green/good), 'auto-approved' (green/good)
-- This touches 5 files total: workflow.json, logicApp.bicep, main.bicep, dev.bicepparam, prod.bicepparam
+## What should change
+- **`infra/main.bicep`** — two new parameters, passed into the module
+- **`infra/modules/logicApp.bicep`** — two new parameters, passed into the workflow `parameters`
+- **`infra/workflows/approval.workflow.json`** — two new workflow parameters, an escalation branch that reuses the same email connector, and an updated card title expression
+- **`infra/parameters/dev.bicepparam`** and **`prod.bicepparam`** — values for the two new params
+
+> ✋ **Do not** add or change anything related to `teamsChannelId`, `teamsGroupId`, `teamsTenantId`, or the Teams API connection. They were set up in Scenario 04 and are reused as-is.
 
 ## Verify
 
 ```bash
-# Rebuild and deploy with new parameters
 az bicep build --file infra/main.bicep
 dotnet script scripts/deploy.csx -- --environment dev
 
-# Test all three approval paths
-dotnet script scripts/invoke.csx -- --environment dev --amount 250     # auto-approve (< 1000)
-dotnet script scripts/invoke.csx -- --environment dev --amount 2500    # standard approval (≥ 1000, < 10000)
-dotnet script scripts/invoke.csx -- --environment dev --amount 15000   # escalation tier (≥ 10000)
+# Below the standard threshold → auto-approve, no email, no Teams card
+dotnet script scripts/invoke.csx -- --environment dev --amount 250
+
+# Above standard, below escalation → goes to standard approver, Teams card on outcome
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500
+
+# Above escalation → goes to escalation approver first
+dotnet script scripts/invoke.csx -- --environment dev --amount 15000
 ```
 
 ✅ **Success indicators:**
-- 250: 200 response, `responseStatus: "auto-approved"`, Teams card with green "Approval Granted ✓"
-- 2500: Email to approverEmail only (no escalation), Teams card shows approval/rejection outcome
-- 15000: Email to escalation@contoso.com first
-  - If escalation approver **rejects**: Teams card with red "Request Escalation Denied ✗", no email to standard approver
-  - If escalation approver **approves**: Email to approverEmail, Teams card shows final standard approval/rejection outcome
-- **Check Teams channel:** All outcomes (escalation-denied, approved, rejected, auto-approved) should post adaptive cards with appropriate colors and titles
+- `250` → 200 response, `responseStatus: auto-approved`, no Teams card needed
+- `2500` → email to standard approver, Teams card shows "Approval Granted ✓" or "Request Rejected ✗"
+- `15000` (escalation rejects) → Teams card shows "Escalation Denied ✗", no email to standard approver
+- `15000` (escalation approves) → email to standard approver next, Teams card shows that final outcome
 
-## Gotchas
-- **Cross-file consistency**: All 5 files must stay in sync. If you add a parameter to main.bicep, it must appear in both .bicepparam files.
-- **Switch expressions**: The Switch condition expression is `@body('Send_escalation_email')?['SelectedOption']` (matches the standard approval pattern).
-- **Variable state**: The `skipApproval` variable must be checked before the standard approval email to prevent duplicate approvals.
-- **Nested conditionals**: You now have three levels: auto-approve check → escalation check → standard approval (only if skipApproval==false).
-- **CRITICAL - Teams notification timing:** The `Post_adaptive_card` action must depend on `Check_skipApproval`, NOT `Check_escalation_threshold`. Set runAfter to `{ "Check_skipApproval": ["Succeeded"] }`. This ensures it waits for BOTH the escalation check AND the standard approval flow (including setting responseStatus) to complete before posting the card. If you set it to depend on `Check_escalation_threshold`, it will run in parallel with `Check_skipApproval`, causing the card to post with empty responseStatus (showing as "Request Rejected ✗") before the approval email is sent for mid-range amounts.
-- **Adaptive card conditional logic**: The title expression needs to handle 4 states (escalation-denied, rejected, approved, auto-approved). Use nested if() expressions: `@{if(equals(variables('responseStatus'), 'escalation-denied'), 'Request Escalation Denied ✗', if(or(equals(variables('responseStatus'), 'approved'), equals(variables('responseStatus'), 'auto-approved')), 'Approval Granted ✓', 'Request Rejected ✗'))}`
+## If something goes wrong
+
+- **Teams card shows the wrong title** → tell Copilot: "The card title is being evaluated before `responseStatus` is set. Make `Post_adaptive_card` wait for the entire approval flow (including the escalation branch) to finish."
+- **Standard approver gets emailed even after escalation rejected** → tell Copilot: "Use the existing `skipApproval` variable to gate the standard approval, the same way auto-approve does."
+- **Bicep build complains about a missing parameter** → one of the five files is out of sync. Ask Copilot to "verify `escalationApproverEmail` and `escalationThreshold` are declared and passed through every layer (`main.bicep` → `logicApp.bicep` → workflow `parameters`) and present in both `.bicepparam` files."
 
 ## Talking points
-- **Progressive enhancement**: Each scenario adds a new capability without breaking prior work.
-- **Cross-file orchestration**: Copilot can coordinate changes across workflow JSON, Bicep, and parameter files in one go.
-- **Conditional branching**: The escalation Switch demonstrates approval workflow state machines.
-- **Environment-specific thresholds**: Dev uses 10K, prod uses 25K for escalation - same logic, different risk tolerance.
-- **Multi-path notifications**: Teams adaptive card posts for all approval outcomes (4 states: escalation-denied, rejected, approved, auto-approved) with dynamic styling and content.
-- **Action sequencing (Bug Fix Applied)**: The Post_adaptive_card action MUST depend on Check_skipApproval (which wraps the standard approval flow), NOT Check_escalation_threshold. This prevents the card from posting prematurely with empty responseStatus before the approval flow completes.
+- **Business-rule change, not a rewrite.** A non-Logic-Apps expert can describe the rule ("CFO sign-off above $10K") and Copilot wires up the parameters, branch, and card.
+- **Reuse beats re-plumbing.** We deliberately don't touch the Teams connection — the value is showing how new behavior layers on top of existing infrastructure.
+- **Environment-specific thresholds.** Dev escalates at 10K, prod at 25K — same code, different risk posture, controlled by `.bicepparam`.
+- **One card, three outcomes.** The Teams card now reflects approved, rejected, *and* escalation-denied without adding new actions.
 
 ---
 **Redeploy:** `dotnet script scripts/deploy.csx -- --environment dev` (then re-run Verify).
