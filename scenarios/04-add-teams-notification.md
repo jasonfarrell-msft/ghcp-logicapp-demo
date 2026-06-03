@@ -11,7 +11,7 @@ The workflow only sends an approval email and returns an HTTP response. There is
 
 1. **Get your Teams channel link**:
    - Open Microsoft Teams → Navigate to the channel where you want cards posted
-   - Click the **"..."** next to the channel name → **"Get link to channel"**
+   - Click the **"..."** next to the channel name → **"Copy link"**
    - Copy the full link (example: `https://teams.microsoft.com/l/channel/19%3A...`)
 
 2. **Configure Teams IDs** (let Copilot help!):
