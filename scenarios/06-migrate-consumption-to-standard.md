@@ -240,7 +240,15 @@ az bicep build --file infra-standard/main.bicep
 dotnet script scripts/deploy-standard.csx -- --environment dev
 ```
 
-POST the same payload to the Standard workflow's trigger URL — same behaviour, different runtime. Open both Logic Apps in the portal to compare run history, pricing, and scaling.
+POST the same payload to the Standard workflow's trigger URL using the
+Standard-specific invoke script:
+
+```bash
+dotnet script scripts/invoke-standard.csx -- --environment dev --amount 2500
+```
+
+Same behaviour, different runtime. Open both Logic Apps in the portal to
+compare run history, pricing, and scaling.
 
 ## Talking points
 - **Schema differences are subtle** but Copilot navigates them with both definitions in context.
