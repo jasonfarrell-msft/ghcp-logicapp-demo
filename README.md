@@ -191,7 +191,7 @@ dotnet script scripts/deploy.csx -- --environment dev
 Scenarios are numbered in presentation order. See [`DEMO.md`](./DEMO.md) for
 the full narrative arc, talking points, and per-beat narration.
 
-## Standard (Logic Apps Standard) — side-by-side
+## Standard migration (Scenario 06)
 
 Scenario 06 introduces a **side-by-side Logic Apps Standard** project. The
 original Consumption deployment under `infra/` stays in place so both
@@ -210,33 +210,38 @@ infra-standard/
 ├── modules/logicAppStandard.bicep
 └── parameters/{dev,prod}.bicepparam
 scripts/deploy-standard.csx
+docs/migration-consumption-to-standard.md
 ```
 
 ### Prerequisites (Standard only)
 
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
-- [Azure Logic Apps (Standard) VS Code extension](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-azurelogicapps)
-- (Optional, for full local dev) Azurite for local storage emulation
+- **Azure Functions Core Tools v4** — Required for workflow deployment via `func azure functionapp publish`
+  - macOS: `brew install azure-functions-core-tools@4`
+  - npm (cross-platform): `npm install -g azure-functions-core-tools@4 --unsafe-perm true`
+  - See: <https://learn.microsoft.com/azure/azure-functions/functions-run-local>
 
 ### Deploy
 
 ```bash
-az bicep build --file infra-standard/main.bicep
 dotnet script scripts/deploy-standard.csx -- --environment dev
 ```
 
-The script provisions the Storage Account, WS1 plan, and `workflowapp` site,
-then runs `func azure functionapp publish` to deploy the contents of
-`standard/` to the new site. Pass `--skip-content` to provision infra only.
+The script:
+1. Builds and deploys `infra-standard/main.bicep` (Storage Account, App Service Plan WS1, `workflowapp` site)
+2. Publishes workflow content via `func azure functionapp publish la-approval-std-{env}`
+3. Prints the trigger callback URL for immediate testing
 
-### Run locally
+### Post-deploy: Re-authorize connections
 
-```bash
-cd standard
-func start
-```
+The Office 365 connection (`con-office365-dev`) is a **separate resource** from the Consumption version (same name pattern, different resource group). After deployment:
 
-POST the same approval payload to the local trigger URL printed by `func`.
+1. Navigate to **Resource Group** `rg-ghcp-logicapp-standard-dev`
+2. Open `con-office365-dev` → **Edit API connection** → **Authorize**
+3. Sign in with your Microsoft 365 account
+
+The Standard workflow will fail until this authorization completes.
+
+### Migration plan
 
 See [`docs/migration-consumption-to-standard.md`](./docs/migration-consumption-to-standard.md)
-for the full migration plan.
+for the complete migration strategy: resource mapping, connection model changes, workflow parameter differences, runtime choice (`node` vs `dotnet-isolated`), and what does NOT carry over (run history, trigger URL format, connection tokens).
