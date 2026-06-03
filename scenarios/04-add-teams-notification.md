@@ -48,8 +48,7 @@ The workflow only sends an approval email and returns an HTTP response. There is
 >    - This is a Consumption Logic App, so use the **Microsoft Teams connector's "Post adaptive card in a chat or channel"** action. Let Copilot pick the connector operation — don't hand-write connector URLs or swagger paths.
 >    - Add it as `Post_adaptive_card` after `Switch_on_approver_response` completes, posting to channel `teamsChannelId` in team `teamsGroupId` as the Flow bot.
 >    - Card body: title plus a FactSet with Request ID, Status, Requester, Amount, Description, and a link back to the run.
->    - Title is dynamic via `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}` (green for approved, red for rejected).
->    - The card must post on **both** approve and reject outcomes.
+>    - Title is dynamic via `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}` (green for approved, red for rejected).   - **Important**: The adaptive card `content` must be a JSON string expression using `@{json('...')}`, NOT a nested object. The workflow definition is static infrastructure — dynamic runtime expressions (like variables) must be encoded as strings.>    - The card must post on **both** approve and reject outcomes.
 >
 > The workflow now returns immediately, and Teams shows the final decision when it's made.
 
