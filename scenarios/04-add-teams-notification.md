@@ -29,28 +29,49 @@ The workflow only sends an approval email and returns an HTTP response. There is
 
 ## Prompt
 
-> Add a Microsoft Teams adaptive card notification to the approval workflow and change it to async processing.
-> Update `infra/workflows/approval.workflow.json`, `infra/main.bicep`, `infra/modules/logicApp.bicep`, and the environment parameter files to:
+> Add a Microsoft Teams adaptive card notification to the approval workflow and change it to async (202 Accepted) processing. Update `infra/workflows/approval.workflow.json`, `infra/main.bicep`, `infra/modules/logicApp.bicep`, and the environment parameter files.
 >
-> 1. **Return 202 Accepted immediately** after variable initialization (don't wait for approval):
->    - Move the Response action to run right after `Initialize_responseStatus`
->    - Status code: `202`, body: `{ "requestId": "...", "status": "processing", "message": "Approval workflow started" }`
->    - Remove the old `Respond` Scope that waited for approval completion
+> **1. Async response pattern**
+> - Add a `responseStatus` string variable initialized to `"pending"`.
+> - Move the Response action to run immediately after `Initialize_responseStatus`, returning HTTP `202` with body `{ "requestId": ..., "status": "processing", "message": "Approval workflow started" }`.
+> - Remove the old `Respond` scope.
+> - The `RequestApproval` scope runs in parallel after the immediate response.
+> - In the Switch cases, set `responseStatus` to `"approved"` or `"rejected"` accordingly.
 >
-> 2. **Process approval asynchronously**:
->    - RequestApproval Scope runs after Response (no dependencies)
->    - Add a `teamsConnection` resource (Microsoft Teams managed API) in the Bicep module
->    - Add `teamsChannelId` and `teamsGroupId` parameters threaded from main.bicep → module → workflow (no tenant ID — the connector reads it from the authorized connection)
->    - Wire the Teams connection into the workflow's `$connections` parameter
->    - Add a `responseStatus` variable set after the Switch resolves (approved/rejected)
+> **2. Teams connection**
+> - Add `teamsChannelId` and `teamsGroupId` parameters threaded from `main.bicep` → `logicApp.bicep` → workflow (no tenant ID needed — the connector reads it from the authorized connection).
+> - Add a `teamsConnection` resource (Microsoft Teams managed API, `kind: 'V2'`) in the Bicep module.
+> - Wire it into the workflow's `$connections` parameter alongside the existing Office 365 connection.
+> - Update `dev.bicepparam` and `prod.bicepparam` with the Teams IDs.
 >
-> 3. **Post adaptive card with final outcome**:
->    - This is a Consumption Logic App, so use the **Microsoft Teams connector's "Post adaptive card in a chat or channel"** action. Let Copilot pick the connector operation — don't hand-write connector URLs or swagger paths.
->    - Add it as `Post_adaptive_card` after `Switch_on_approver_response` completes, posting to channel `teamsChannelId` in team `teamsGroupId` as the Flow bot.
->    - Card body: title plus a FactSet with Request ID, Status, Requester, Amount, Description, and a link back to the run.
->    - Title is dynamic via `@{if(equals(variables('responseStatus'), 'approved'), 'Approval Granted ✓', 'Request Rejected ✗')}` (green for approved, red for rejected).   - **Important**: The adaptive card `content` must be a JSON string expression using `@{json('...')}`, NOT a nested object. The workflow definition is static infrastructure — dynamic runtime expressions (like variables) must be encoded as strings.>    - The card must post on **both** approve and reject outcomes.
+> **3. Adaptive card action — use this exact shape**
 >
-> The workflow now returns immediately, and Teams shows the final decision when it's made.
+> Add a `Post_adaptive_card` action of type `ApiConnection` that runs after `Switch_on_approver_response` succeeds. Use this exact structure (NOT the Flow bot `messageBody`/`recipient` schema):
+>
+> - `method`: `post`
+> - `host.connection.name`: `@parameters('$connections')['teams']['connectionId']`
+> - `path`: `/v3/beta/teams/@{encodeURIComponent(parameters('teamsGroupId'))}/channels/@{encodeURIComponent(parameters('teamsChannelId'))}/messages`
+> - `body` shape:
+>   ```
+>   body: {
+>     body: { contentType: 'html', content: '<attachment id="<guid>"></attachment>' }
+>     attachments: [{
+>       id: '<same-guid>'
+>       contentType: 'application/vnd.microsoft.card.adaptive'
+>       content: '@{json(concat(...))}'   // must resolve to a JSON OBJECT, not a string
+>     }]
+>   }
+>   ```
+>
+> **Adaptive card content rules** (these prevent runtime and compile errors):
+> - Build the card via `@{json(concat('...', expr, '...'))}` — NOT a nested Bicep/JSON object with inline `@{...}` expressions, and NOT `@{string(json(...))}`.
+> - Card body: a `TextBlock` title plus a `FactSet` with Request ID, Status, Requester, Amount, Description.
+> - Title text: `if(equals(variables('responseStatus'), 'approved'), 'Approval Granted', 'Request Rejected')` — **plain ASCII only**, no Unicode glyphs like ✓/✗ (Bicep escape rules forbid them and will fail BCP006).
+> - Title color: `if(equals(variables('responseStatus'), 'approved'), 'good', 'attention')` — green for approved, red for rejected.
+> - Do **not** include `subscription()`, `resourceGroup()`, or `workflow()` functions inside the card content — they fail at runtime in this scope ("subscription is not defined").
+> - Inside Bicep single-quoted strings, JSON double quotes are literal (`"`); do **not** escape them as `\"`.
+>
+> The card must post on **both** approve and reject outcomes. The workflow returns 202 immediately, and Teams shows the final decision when it's made.
 
 ## What changes
 - **`infra/modules/logicApp.bicep`**: adds `teamsConnection` resource, `teamsName` variable, `teamsChannelId` / `teamsGroupId` parameters, threads Teams into `$connections`, moves Response to return 202 immediately, adds `Set_responseStatus` + `Post_adaptive_card` actions, removes old `Respond` Scope
