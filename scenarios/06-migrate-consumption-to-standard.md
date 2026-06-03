@@ -16,7 +16,6 @@ A Consumption → Standard migration is **not** a 1:1 copy. It requires:
 - A different on-disk layout (`workflow.json` per workflow + `host.json` + `connections.json` + `parameters.json`).
 - Managed API connections become **API connections referenced via `connections.json`** with `connectionRuntimeUrl` + auth, or are replaced by **built-in service-provider connectors** (preferred where available).
 - Workflow `parameters` (`$connections`) shape changes — built-in connectors don't use `$connections` at all.
-- Local dev becomes possible via the **Azure Logic Apps (Standard) VS Code extension** + Azure Functions Core Tools.
 
 By hand from docs this takes hours. With Copilot and the existing Consumption workflow as input, minutes.
 
@@ -47,7 +46,7 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 >    `WS1` / `kind: elastic`). Keep the Office 365
 >    `Microsoft.Web/connections` resource as-is.
 > 2. **On-disk layout** — exact file tree for `standard/` (host.json,
->    connections.json, parameters.json, local.settings.json,
+>    connections.json, parameters.json,
 >    `Approval/workflow.json`) and for `infra-standard/` (main.bicep,
 >    modules/logicAppStandard.bicep, parameters/dev.bicepparam,
 >    parameters/prod.bicepparam).
@@ -64,11 +63,7 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 >    this demo (faster cold start, smaller image, no compile step) and
 >    note when `dotnet-isolated` would be chosen instead (custom code
 >    extensions).
-> 6. **Local dev** — bullet list of what you need installed (Azure
->    Functions Core Tools v4, VS Code "Azure Logic Apps (Standard)"
->    extension, Azurite for local storage) and the exact commands to run
->    locally (`cd standard && func start`).
-> 7. **What does NOT carry over** — explicitly call out: run history is
+> 6. **What does NOT carry over** — explicitly call out: run history is
 >    not migrated, the trigger URL changes, the managed API connection
 >    must be re-authorized after deploy.
 
@@ -84,24 +79,6 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 >   "extensionBundle": {
 >     "id": "Microsoft.Azure.Functions.ExtensionBundle.Workflows",
 >     "version": "[1.*, 2.0.0)"
->   }
-> }
-> ```
->
-> **`standard/local.settings.json`** — with `IsEncrypted: false` and
-> these settings (use `UseDevelopmentStorage=true` so the demo works
-> against Azurite without a real storage account):
-> ```json
-> {
->   "IsEncrypted": false,
->   "Values": {
->     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
->     "FUNCTIONS_WORKER_RUNTIME": "node",
->     "WORKFLOWS_SUBSCRIPTION_ID": "<replace-at-deploy>",
->     "WORKFLOWS_RESOURCE_GROUP_NAME": "<replace-at-deploy>",
->     "WORKFLOWS_LOCATION_NAME": "eastus2",
->     "APP_KIND": "workflowApp",
->     "office365-ConnectionRuntimeUrl": "<set-after-deploy>"
 >   }
 > }
 > ```
@@ -243,10 +220,7 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 > migration (Scenario 06)"** section after the existing setup, listing:
 > - Prerequisites: Azure Functions Core Tools v4
 >   (`brew install azure-functions-core-tools@4` or
->   `npm i -g azure-functions-core-tools@4`), the VS Code "Azure Logic
->   Apps (Standard)" extension, optionally Azurite for local dev.
-> - Local run: `cd standard && func start`, then POST to
->   `http://localhost:7071/api/Approval/triggers/manual/invoke`.
+>   `npm i -g azure-functions-core-tools@4`) for deployment.
 > - Deploy: `dotnet script scripts/deploy-standard.csx -- --environment dev`.
 > - Post-deploy: re-authorize `con-office365-dev` in the portal (separate
 >   connection from the Consumption one — same name pattern, different
@@ -264,8 +238,6 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 ```bash
 az bicep build --file infra-standard/main.bicep
 dotnet script scripts/deploy-standard.csx -- --environment dev
-# Optional local dev (requires Azure Functions Core Tools v4):
-cd standard; func start
 ```
 
 POST the same payload to the Standard workflow's trigger URL — same behaviour, different runtime. Open both Logic Apps in the portal to compare run history, pricing, and scaling.
