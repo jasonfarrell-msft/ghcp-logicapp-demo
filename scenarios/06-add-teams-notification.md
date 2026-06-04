@@ -24,6 +24,17 @@ Adding a Teams adaptive card on Standard is clean because Standard already speak
   3. **`teamsGroupId`** = the `groupId` query parameter (a UUID, e.g. `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
   4. **`teamsChannelId`** = the path segment between `/channel/` and `%40thread`, URL-decoded: `19:<channelId>@thread.tacv2`.
 
+## Step 0 — Populate the param file
+
+Once you have both values, open `infra-standard/parameters/dev.bicepparam` and add them:
+
+```
+param teamsGroupId   = '<paste groupId UUID here>'
+param teamsChannelId = '<paste decoded 19:...@thread.tacv2 value here>'
+```
+
+Leave everything else in that file unchanged. Copilot will add the matching Bicep parameter declarations when you run the prompt in Step 1.
+
 ## Model guidance
 
 - Use **VS Code Agent mode** with **Claude Sonnet 4.6 or higher**. V2 connections on Standard are a clean schema — Sonnet is reliable here.
@@ -72,8 +83,6 @@ Click it → **Authorize** → sign in → **Save**, then re-run the deploy scri
 
 ## Step 3 — Verify
 
-Add `teamsChannelId` and `teamsGroupId` to your `dev.bicepparam` (or supply them however the rest of the app's params get supplied), then:
-
 ```bash
 dotnet script scripts/invoke-standard.csx -- --environment dev --amount 250
 dotnet script scripts/invoke-standard.csx -- --environment dev --amount 2500
@@ -93,8 +102,6 @@ dotnet script scripts/invoke-standard.csx -- --environment dev --amount 15000
 - **Card posts but body is `null`** — the `body` is a string of escaped JSON. Ask Copilot to "wrap the body construction in `@{json(concat(...))}` so the runtime sends an object, not a string."
 - **`403` from the Teams action** — the V2 connection isn't authorized. Click the portal URL the deploy script printed and complete OAuth.
 - **`InvalidApiConnectionAccessPolicy`** — Copilot created the connection without `kind: 'V2'`. Tell it: "The Teams connection must be `kind: 'V2'`. V1 rejects access policies."
-- **Card posts to wrong channel** — `teamsChannelId` and `teamsGroupId` are swapped. The channel ID is the `threadId` from the Teams "Get link to channel" URL.
-
 ## Talking points
 
 - **Encore, not exam.** Scenario 05 was the climax. This one demonstrates the *shape* of post-migration work: adding a connector on Standard is the same V2 + MSI + `accessPolicies` pattern Copilot already learned for Office 365 — and it's additive, not invasive.
