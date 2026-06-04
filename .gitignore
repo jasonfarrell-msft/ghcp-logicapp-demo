@@ -1,13 +1,10 @@
 # Bicep build artifacts
 infra/**/*.json
 !infra/workflows/*.workflow.json
-infra-standard/**/*.json
 
-# Logic Apps Standard tool-generated artifacts (recreated by VS Code extension / func)
-standard/workflow-designtime/
-standard/.vscode/
-standard/bin/
-standard/obj/
+# Logic Apps Standard — fully generated during demo run; never committed
+infra-standard/
+standard/
 
 # Generated documentation
 docs/

@@ -30,10 +30,6 @@ The scenarios are numbered in presentation order — `01` through `06`.
 | 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
 | 4 | **04 Escalation branch** | Business-rule change. Cross-file feature spanning workflow + 4 Bicep files, with all four outcomes visible in the console — no UI side effects needed. |
 | 5 | **05 Migrate Consumption → Standard** | **Climax.** The single biggest cross-cutting change Copilot can do for you here — different resources, different layout, different connection model — preserving the escalation logic from Beat 4 byte-for-byte. |
-| 6 | **06 Add Teams notification (on Standard)** | **Cuttable finale.** Bonus payoff that demonstrates how clean the V2-connection model is on Standard. The same prompt vocabulary you used in Beat 5 — V2, MSI, accessPolicies — applied to a second connector. |
-
-If short on time, **cut 06 first** — Teams is the encore, not the climax. The
-demo lands with Beat 5.
 
 ## Pre-flight checklist (do this BEFORE the audience walks in)
 
@@ -74,9 +70,6 @@ Run these once. They survive across the whole demo.
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
-- [ ] (For Beat 6 only) Have a Teams **channel** ready and grab its
-  `groupId` and `channelId` (channel **⋯** → **Get link to channel** → URL
-  contains both). You'll add them to `dev.bicepparam` during the scenario.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,
   `infra/modules/logicApp.bicep`,
@@ -85,7 +78,7 @@ Run these once. They survive across the whole demo.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
 - [ ] In Copilot, pick your model/mode before starting:
   - Use **VS Code Agent mode** (no Chat mode).
-  - **Beats 1–4 and 6:** Claude **Sonnet 4.6 or higher**.
+  - **Beats 1–4:** Claude **Sonnet 4.6 or higher**.
   - **Beat 5 (migration):** Claude **Opus 4.6 or higher**. Sonnet drifts on
     the nested Bicep + V2 connection + `connections.json` schema during the
     migration. Opus is the right tool for the climax — switch deliberately.
@@ -195,31 +188,11 @@ change Copilot is most differentiated at — a wide refactor across
 heterogeneous files where the ground truth lives in product docs, not in
 the repo. Plan-first with Opus is the pattern they should take home.
 
-### Beat 6 — Scenario 06: Add Teams notification on Standard (cuttable finale)
-
-> **Say this:** "Encore. Now that we're on Standard, watch how clean adding
-> a second connector is — same V2, MSI, accessPolicies pattern Copilot
-> already learned for Office 365. We're going to post an Adaptive Card to
-> Teams for every approval outcome, and it's additive, not invasive."
-
-**Switch the model back:** Agent mode → Claude Sonnet 4.6+. V2 connections
-on Standard are clean enough that Sonnet is reliable here.
-
-Open [`scenarios/06-add-teams-notification.md`](./scenarios/06-add-teams-notification.md).
-Make sure `teamsChannelId` and `teamsGroupId` land in `dev.bicepparam`,
-deploy, **Authorize** the new `con-teams-std-dev` connection in the portal,
-then run all three amounts and show the cards land in the channel.
-
-**Why this beat matters:** demonstrates the *shape* of post-migration work.
-Adding any connector on Standard is the same recipe — V2, MSI,
-accessPolicies, app settings, `connections.json` entry. SQL, ServiceBus,
-SharePoint: same pattern. **If short on time, this is the scenario to cut.**
-
 ## Between scenarios
 
 Bicep is idempotent — every Beat 1–4 redeploy is
 `dotnet script scripts/deploy.csx -- --environment dev` against the same RG.
-Beats 5–6 redeploy with `dotnet script scripts/deploy-standard.csx -- --environment dev`.
+Beat 5 redeploys with `dotnet script scripts/deploy-standard.csx -- --environment dev`.
 The trigger URLs stay the same within each app.
 
 ⚠️ **Do not run `scripts/reset.csx` between scenarios.** It deletes the
@@ -275,30 +248,16 @@ different subscription. Until quota is available, treat Beat 5 as a
 **code walk-through** — the Bicep is valid and all files are in place;
 only the Azure provisioning step is blocked.
 
-### 5. Beat 5/6 first invoke returns `403 missing connection ACL`
+### 5. Beat 5 first invoke returns `403 missing connection ACL`
 
-**Cause:** the V2 connection (`con-office365-std-dev` or
-`con-teams-std-dev`) is created Unauthorized. OAuth consent cannot be
+**Cause:** the V2 connection (`con-office365-std-dev`) is created Unauthorized. OAuth consent cannot be
 automated.
 
 **Fix:** open the portal URL the deploy script printed → **Authorize** →
 **Save** → re-run the deploy script (it will detect the change and restart
 the app) → re-invoke.
 
-### 6. Beat 6: Teams card doesn't appear
-
-**Cause:** Teams V2 connection not authorized, or `teamsChannelId` /
-`teamsGroupId` swapped.
-
-**Fix:**
-- Portal → workflow app → API connections → `con-teams-std-dev` →
-  **Authorize**.
-- Verify `teamsChannelId` and `teamsGroupId` in your `.bicepparam`. The
-  channel ID is the `threadId` from the Teams "Get link to channel" URL —
-  not the channel display name.
-- Redeploy: `dotnet script scripts/deploy-standard.csx -- --environment dev`.
-
-### 7. `az deployment sub create` prints `ERROR: The content for this response was already consumed`
+### 6. `az deployment sub create` prints `ERROR: The content for this response was already consumed`
 
 **Cause:** known bug in Azure CLI 2.74 where `--query` combined with a
 deployment that produces structured output can consume the response body
