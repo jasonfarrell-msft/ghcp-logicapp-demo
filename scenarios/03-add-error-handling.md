@@ -40,7 +40,7 @@ The `RequestApproval` scope has `limit.timeout = PT1M`. Submit a request
 **above** the threshold and simply do not click Approve or Reject in the email:
 
 ```bash
-dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 90
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 30
 ```
 
 1. The approval email is sent.
