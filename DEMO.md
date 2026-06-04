@@ -15,7 +15,7 @@ definition, the IaC that deploys it, and the connection wiring. Today we
 show how **GitHub Copilot turns Logic App authoring and maintenance from
 JSON-wrangling into intent-driven editing**, keeping Bicep, workflow JSON,
 and connection bindings in sync in a single pass. We start by asking Copilot
-to *explain* what we already have, then evolve it through six concrete
+to *explain* what we already have, then evolve it through five concrete
 refactors that each touch multiple files — and the climax is the high-stakes
 one: a full Consumption → Standard migration.
 

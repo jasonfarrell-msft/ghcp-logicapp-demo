@@ -21,7 +21,8 @@ to set it up.
 ### Model and VS Code mode guidance (for live demos)
 
 - Use **VS Code Agent mode** (no Chat mode) so the agent makes the edits directly.
-- **All scenarios (01–06):** use **Claude Sonnet** throughout the demo.
+- **Beats 1–4 (scenarios 01–04):** use **Claude Sonnet 4.6 or higher**.
+- **Beat 5 (scenario 05 — migration):** switch to **Claude Opus 4.6 or higher**. Sonnet drifts on the nested Bicep + V2 connection + `connections.json` schema during the migration.
 - To keep thinking lightweight, add: "use the simplest valid approach, no alternatives."
 - If a response gets verbose, ask for: "single diff only, no extra explanation."
 
@@ -54,8 +55,7 @@ flow:
 5. Otherwise → respond `auto-approved`.
 
 The skeleton **deliberately** has gaps: no scopes, hard-coded values, no
-retries, no escalation, no Teams notification, no docs. **Each scenario fixes
-one of those gaps live.**
+retries, no escalation, no docs. **Each scenario fixes one of those gaps live.**
 
 ## Prerequisites
 
@@ -124,8 +124,6 @@ Before invoking the workflow, authorize all deployed API connections in the Azur
 2. Click `con-office365-dev` → **Edit API connection** → **Authorize**
 3. Sign in with your Microsoft 365 account
 
-> **Note:** Scenario 04 adds a Teams connection (`con-teams-dev`) that will also need to be authorized after that scenario is deployed.
-
 ```
 
 ### 4. Smoke Test
@@ -184,16 +182,15 @@ dotnet script scripts/deploy.csx -- --environment dev
 | 01 | Explain & document | Mermaid + plain-English from JSON |
 | 02 | Refactor: extract sub-flows | Copilot reasons over `Scope`/`runAfter` |
 | 03 | Add error handling | `retryPolicy`, failure scopes, dead-letter |
-| 04 | Add Teams notification | Wiring a new connector end-to-end |
-| 05 | Add an escalation branch | Cross-file IaC consistency |
-| 06 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
+| 04 | Add an escalation branch | Cross-file IaC consistency — one business rule, five files, four outcomes |
+| 05 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
 
 Scenarios are numbered in presentation order. See [`DEMO.md`](./DEMO.md) for
 the full narrative arc, talking points, and per-beat narration.
 
 ## Standard (Logic Apps Standard) — side-by-side
 
-Scenario 06 introduces a **side-by-side Logic Apps Standard** project. The
+Scenario 05 introduces a **side-by-side Logic Apps Standard** project. The
 original Consumption deployment under `infra/` stays in place so both
 runtimes can be compared live.
 
