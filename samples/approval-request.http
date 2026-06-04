@@ -1,5 +1,5 @@
 ### Approval request — replace {{triggerUrl}} with the URL from the deployed Logic App's HTTP trigger.
-@triggerUrl = https://prod-00.eastus.logic.azure.com/workflows/REPLACE/triggers/When_an_approval_request_is_received/paths/invoke?api-version=2016-10-01&sp=...&sv=...&sig=...
+@triggerUrl = https://prod-00.swedencentral.logic.azure.com/workflows/REPLACE/triggers/When_an_approval_request_is_received/paths/invoke?api-version=2016-10-01&sp=...&sv=...&sig=...
 
 POST {{triggerUrl}}
 Content-Type: application/json

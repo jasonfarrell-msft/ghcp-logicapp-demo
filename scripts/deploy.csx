@@ -1,13 +1,13 @@
 #load "lib/common.csx"
 // Cross-platform replacement for scripts/deploy.ps1.
-// Usage: dotnet script scripts/deploy.csx -- [--environment dev|prod] [--location eastus]
+// Usage: dotnet script scripts/deploy.csx -- [--environment dev|prod] [--location swedencentral]
 
 using System;
 using System.IO;
 
 var parsed = Common.ParseArgs(Args);
 var environment = Common.Get(parsed, "environment", "dev");
-var location = Common.Get(parsed, "location", "eastus");
+var location = Common.Get(parsed, "location", "swedencentral");
 
 if (environment != "dev" && environment != "prod")
 {
