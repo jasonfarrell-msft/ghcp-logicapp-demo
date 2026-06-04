@@ -24,7 +24,7 @@ The workflow only sends an approval email and returns an HTTP response. There is
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **Claude Sonnet 4.5** with strict file targeting.
+- Use **Claude Opus 4.6 or higher** — Sonnet repeatedly miscounts quote pairs in nested Bicep → ARM expression → JSON `concat()` strings, producing BCP006 escape errors and malformed adaptive card JSON. Opus handles the multi-level escaping reliably.
 - Ask for "single diff across workflow JSON + Bicep + params files, simplest valid approach."
 
 ## Prompt
@@ -40,7 +40,7 @@ The workflow only sends an approval email and returns an HTTP response. There is
 >
 > **2. Teams connection**
 > - Add `teamsChannelId` and `teamsGroupId` parameters threaded from `main.bicep` → `logicApp.bicep` → workflow (no tenant ID needed — the connector reads it from the authorized connection).
-> - Add a `teamsConnection` resource (Microsoft Teams managed API, `kind: 'V2'`) in the Bicep module.
+> - Add a `teamsConnection` resource (Microsoft Teams managed API — **do not set `kind`**; Consumption Logic Apps only support the default V1 connection and reject `kind: 'V2'` at runtime with `WorkflowInvalidApiConnectionV2`) in the Bicep module.
 > - Wire it into the workflow's `$connections` parameter alongside the existing Office 365 connection.
 > - Update `dev.bicepparam` and `prod.bicepparam` with the Teams IDs.
 >
