@@ -4,24 +4,29 @@
 
 > 💡 **Why cuttable:** This is a bonus payoff that demonstrates how clean the V2-connection model is on Standard. If you're short on time, **cut this one first** — the migration in Scenario 05 is the climax of the workshop. Teams notification is the encore.
 
-## Why this is the right place for Teams
+## Why Standard is the right place for Teams
 
-The same Teams card was deliberately *not* added to the Consumption app earlier in the demo. On Consumption, Teams requires a V1 connection with `$connections` plumbing, which is fragile (BCP escape errors, V1 vs V2 confusion) and gets thrown away the instant the migration runs. Doing it on Standard is the right place because:
+Adding a Teams adaptive card on Standard is clean because Standard already speaks the modern connection model:
 
-- Standard already speaks **V2 connections + Managed Identity + `accessPolicies`** — the same model you set up for Office 365 in Scenario 05.
+- Standard uses **V2 connections + Managed Identity + `accessPolicies`** — the same model you set up for Office 365 in Scenario 05.
 - `connections.json` is just another entry in the same file — additive, not invasive.
 - No `$connections` workflow-parameter gymnastics. The action references the connection by `referenceName: 'teams'` and the runtime resolves it via app settings.
 
 ## Prerequisites
 
 - Scenario 05 deployed and verified (you can invoke the Standard app and see all four `responseStatus` values).
-- A Microsoft Teams **channel** you can post to. You'll need its `groupId` (Team) and `channelId`.
-  - In Teams: click ⋯ next to the channel → **Get link to channel** → URL contains `groupId=...` and `threadId=...` (the `threadId` is the channel ID).
+- A Microsoft Teams **channel** you can post to. You'll need its `groupId` (Team) and `channelId`, both extracted from the channel's **Copy Link** URL:
+  1. In Teams, right-click (or click ⋯) the channel → **Get link to channel** → **Copy**.
+  2. Paste the URL somewhere readable. It looks like:
+     ```
+     https://teams.microsoft.com/l/channel/19%3A<channelId>%40thread.tacv2/<channelName>?groupId=<groupId>&tenantId=<tenantId>
+     ```
+  3. **`teamsGroupId`** = the `groupId` query parameter (a UUID, e.g. `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+  4. **`teamsChannelId`** = the path segment between `/channel/` and `%40thread`, URL-decoded: `19:<channelId>@thread.tacv2`.
 
 ## Model guidance
 
 - Use **VS Code Agent mode** with **Claude Sonnet 4.6 or higher**. V2 connections on Standard are a clean schema — Sonnet is reliable here.
-- Add to context: `standard/Approval/workflow.json`, `standard/connections.json`, `standard/parameters.json`, and `infra-standard/modules/logicAppStandard.bicep`, `infra-standard/main.bicep`, both `.bicepparam` files.
 - Ask for one consolidated diff.
 
 ## Prompt (copy/paste)
