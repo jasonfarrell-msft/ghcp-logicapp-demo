@@ -140,14 +140,12 @@ else
 }
 
 // ──────────────────────────────────────────────────────────────
-// Phase 4.5: Verify V2 connection runtime URL and authorization
+// Phase 4.5: Verify V2 connection authorization
 // ──────────────────────────────────────────────────────────────
-// The Bicep already wires `office365-ConnectionRuntimeUrl` and
-// `office365-ConnectionName` into the workflow app from the V2 connection's
-// `properties.connectionRuntimeUrl`. The remaining gap is the OAuth consent —
-// V2 connections are created in an *Unauthorized* state and require a one-time
-// interactive sign-in in the Azure portal before the workflow can send mail.
-Common.WriteHeading("Verifying Office 365 connection authorization");
+// V2 connections are created in an Unauthorized state and require a one-time
+// interactive OAuth sign-in before the workflow runtime will accept them.
+// We check the office365 connection and print the portal URL if not Connected.
+Common.WriteHeading("Verifying connection authorization");
 
 var subIdCmd = Common.Capture("az", new[] { "account", "show", "--query", "id", "-o", "tsv" });
 if (subIdCmd.ExitCode != 0)
@@ -156,76 +154,109 @@ if (subIdCmd.ExitCode != 0)
     return 1;
 }
 var subscriptionId = subIdCmd.Stdout.Trim();
-var connectionName = $"con-office365-std-{environment}";
 
-var connStatusCmd = Common.Capture("az", new[]
-{
-    "rest", "--method", "get",
-    "--url", $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connectionName}?api-version=2018-07-01-preview",
-    "--query", "{statuses:properties.statuses,runtimeUrl:properties.connectionRuntimeUrl}",
-    "-o", "json"
-});
+// Connections to verify: name -> display label
+var connectionsToCheck = new[] {
+    ($"con-office365-std-{environment}", "Office 365"),
+};
 
-bool connectionAuthorized = false;
-string runtimeUrl = null;
-if (connStatusCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(connStatusCmd.Stdout))
+bool allConnectionsAuthorized = true;
+foreach (var (connName, connLabel) in connectionsToCheck)
 {
-    try
+    var connCmd = Common.Capture("az", new[]
     {
-        using var connDoc = JsonDocument.Parse(connStatusCmd.Stdout);
-        runtimeUrl = connDoc.RootElement.TryGetProperty("runtimeUrl", out var rt) ? rt.GetString() : null;
-        if (connDoc.RootElement.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array)
+        "rest", "--method", "get",
+        "--url", $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connName}?api-version=2018-07-01-preview",
+        "--query", "{statuses:properties.statuses,runtimeUrl:properties.connectionRuntimeUrl}",
+        "-o", "json"
+    });
+
+    bool authorized = false;
+    string runtimeUrl = null;
+    if (connCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(connCmd.Stdout))
+    {
+        try
         {
-            foreach (var s in statuses.EnumerateArray())
+            using var connDoc = JsonDocument.Parse(connCmd.Stdout);
+            runtimeUrl = connDoc.RootElement.TryGetProperty("runtimeUrl", out var rt) ? rt.GetString() : null;
+            if (connDoc.RootElement.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array)
             {
-                if (s.TryGetProperty("status", out var st) &&
-                    string.Equals(st.GetString(), "Connected", StringComparison.OrdinalIgnoreCase))
+                foreach (var s in statuses.EnumerateArray())
                 {
-                    connectionAuthorized = true;
-                    break;
+                    if (s.TryGetProperty("status", out var st) &&
+                        string.Equals(st.GetString(), "Connected", StringComparison.OrdinalIgnoreCase))
+                    {
+                        authorized = true;
+                        break;
+                    }
                 }
             }
         }
+        catch { /* non-fatal */ }
     }
-    catch (Exception ex)
+
+    Console.WriteLine($"  {connLabel} ({connName}): {(authorized ? "Connected" : "NOT AUTHORIZED")}");
+    if (runtimeUrl != null) Console.WriteLine($"    Runtime URL: {runtimeUrl}");
+
+    if (!authorized)
     {
-        Common.WriteWarn($"Could not parse connection status: {ex.Message}");
+        allConnectionsAuthorized = false;
+        Console.WriteLine();
+        Common.WriteWarn($"⚠️  {connLabel} connection needs authorization.");
+        Console.WriteLine($"    1. Open  https://portal.azure.com/#@/resource/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connName}/edit");
+        Console.WriteLine("    2. Click  'Authorize'  and sign in.");
+        Console.WriteLine("    3. Click  'Save'.");
+        Console.WriteLine();
     }
-}
-else if (!string.IsNullOrWhiteSpace(connStatusCmd.Stderr))
-{
-    Common.WriteWarn(connStatusCmd.Stderr);
 }
 
-Console.WriteLine($"  Connection: {connectionName}");
-Console.WriteLine($"  Runtime URL: {runtimeUrl ?? "(not yet available)"}");
-Console.WriteLine($"  Authorized: {(connectionAuthorized ? "yes" : "NO — manual step required")}");
-
-if (!connectionAuthorized)
+if (!allConnectionsAuthorized)
 {
-    Console.WriteLine();
-    Common.WriteWarn("⚠️  The Office 365 connection has not been authorized yet.");
-    Common.WriteWarn("    Until you authorize it, the Send_approval_email step will fail at runtime.");
-    Console.WriteLine();
-    Console.WriteLine("    Authorize it in the Azure portal:");
-    Console.WriteLine($"      1. Open  https://portal.azure.com/#@/resource/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connectionName}/edit");
-    Console.WriteLine("      2. Click  'Authorize'  and sign in as the approver mailbox.");
-    Console.WriteLine("      3. Click  'Save'.");
-    Console.WriteLine();
-    Console.WriteLine("    Then re-run this deploy script (or just invoke the workflow).");
+    Common.WriteWarn("One or more connections need authorization. Authorize them in the portal (URLs above),");
+    Common.WriteWarn("then re-run this script. The runtime will not start until all connections are authorized.");
+    return 0;
 }
-else
+
+// All connections authorized — restart so the runtime picks up any new app settings.
+Console.WriteLine();
+Console.WriteLine("All connections authorized. Restarting workflow app...");
+Common.Run("az", new[]
 {
-    Console.WriteLine("Restarting workflow app to pick up the latest connection runtime URL...");
-    Common.Run("az", new[]
+    "webapp", "restart",
+    "--resource-group", resourceGroupName,
+    "--name", workflowAppName,
+    "-o", "none"
+});
+
+// ──────────────────────────────────────────────────────────────
+// Phase 4.6: Wait for workflow runtime to be ready
+// ──────────────────────────────────────────────────────────────
+// After a zip deploy + restart the WS1 host can take 60-180s to load the
+// extension bundle, mount the content share, and register workflows.
+// Poll the management endpoint rather than using a fixed sleep.
+Common.WriteHeading("Waiting for workflow runtime to be ready...");
+var pollUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
+    $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
+    "/api/management/workflows?api-version=2024-04-01";
+var runtimeReady = false;
+for (int attempt = 1; attempt <= 18; attempt++) // 18 x 10s = 3 min
+{
+    System.Threading.Thread.Sleep(10000);
+    var probe = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", pollUri, "-o", "none" });
+    if (probe.ExitCode == 0)
     {
-        "webapp", "restart",
-        "--resource-group", resourceGroupName,
-        "--name", workflowAppName,
-        "-o", "none"
-    });
-    Console.WriteLine("Waiting 30 seconds for workflow runtime to register workflows...");
-    System.Threading.Thread.Sleep(30000);
+        runtimeReady = true;
+        Console.WriteLine($"  ✓ Runtime ready after ~{attempt * 10}s.");
+        break;
+    }
+    Console.Write($"  [{attempt,2}/18] starting");
+    for (int dot = 0; dot < (attempt % 4) + 1; dot++) Console.Write(".");
+    Console.WriteLine();
+}
+if (!runtimeReady)
+{
+    Common.WriteWarn("Runtime did not become ready within 3 minutes.");
+    Common.WriteWarn("The workflow may still be starting. Wait a moment and then invoke.");
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -233,13 +264,7 @@ else
 // ──────────────────────────────────────────────────────────────
 Common.WriteHeading("Retrieving trigger callback URL");
 
-var subCmd = Common.Capture("az", new[] { "account", "show", "--query", "id", "-o", "tsv" });
-if (subCmd.ExitCode != 0)
-{
-    Common.WriteError("Could not retrieve subscription ID.");
-    return 1;
-}
-var subId = subCmd.Stdout.Trim();
+var subId = subscriptionId; // already resolved in Phase 4.5
 
 var workflowName = "Approval"; // Folder name in standard/Approval/
 var triggerName = "When_an_approval_request_is_received";
@@ -254,7 +279,7 @@ if (restCmd.ExitCode != 0 || string.IsNullOrWhiteSpace(restCmd.Stdout))
 {
     Common.WriteWarn("Could not retrieve trigger callback URL.");
     if (!string.IsNullOrWhiteSpace(restCmd.Stderr)) Common.WriteError(restCmd.Stderr);
-    Common.WriteWarn("You may need to authorize the Office 365 connection in the portal before invoking.");
+    Common.WriteWarn($"Is the workflow deployed? (rg={resourceGroupName}, site={workflowAppName}, workflow={workflowName})");
 }
 else
 {
@@ -268,18 +293,90 @@ else
         Console.WriteLine("Trigger URL:");
         Console.WriteLine(triggerUrl);
         Console.WriteLine();
-        if (!connectionAuthorized)
-        {
-            Common.WriteWarn("Authorize the Office 365 connection (see instructions above) BEFORE invoking,");
-            Common.WriteWarn("otherwise Send_approval_email will fail with 403 'missing connection ACL'.");
-            Console.WriteLine();
-        }
         Console.WriteLine("Test with:");
+        Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 500");
         Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 2500");
     }
     catch (Exception ex)
     {
         Common.WriteWarn($"Could not parse trigger URL: {ex.Message}");
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Phase 6: Recent run history (smoke check)
+// ──────────────────────────────────────────────────────────────
+if (runtimeReady)
+{
+    Common.WriteHeading("Recent workflow runs");
+    var runsUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
+        $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
+        $"/api/management/workflows/{workflowName}/runs?api-version=2024-04-01&$top=5";
+    var runsCmd = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", runsUri, "-o", "json" });
+    if (runsCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(runsCmd.Stdout))
+    {
+        try
+        {
+            using var runsDoc = JsonDocument.Parse(runsCmd.Stdout);
+            var runs = runsDoc.RootElement.GetProperty("value");
+            if (runs.GetArrayLength() == 0)
+            {
+                Console.WriteLine("  No runs yet — invoke the workflow to create the first run.");
+            }
+            else
+            {
+                Console.WriteLine($"  {"Status",-12}  {"Start time",-26}  Run ID");
+                Console.WriteLine($"  {new string('-', 12)}  {new string('-', 26)}  {new string('-', 34)}");
+                foreach (var run in runs.EnumerateArray())
+                {
+                    var props = run.GetProperty("properties");
+                    var runStatus = props.TryGetProperty("status", out var s) ? s.GetString() : "?";
+                    var startTime = props.TryGetProperty("startTime", out var t) ? t.GetString() : "";
+                    var runId = run.GetProperty("name").GetString();
+                    var prev = Console.ForegroundColor;
+                    Console.ForegroundColor = runStatus == "Succeeded" ? ConsoleColor.Green
+                                            : runStatus == "Failed"    ? ConsoleColor.Red
+                                            : ConsoleColor.Yellow;
+                    Console.Write($"  {runStatus,-12}");
+                    Console.ForegroundColor = prev;
+                    Console.WriteLine($"  {startTime,-26}  {runId}");
+
+                    // For any failed run, print action-level status so the cause is immediately visible.
+                    if (runStatus == "Failed")
+                    {
+                        var actionsUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
+                            $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
+                            $"/api/management/workflows/{workflowName}/runs/{runId}/actions?api-version=2024-04-01";
+                        var actionsCmd = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", actionsUri, "-o", "json" });
+                        if (actionsCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(actionsCmd.Stdout))
+                        {
+                            try
+                            {
+                                using var actDoc = JsonDocument.Parse(actionsCmd.Stdout);
+                                foreach (var action in actDoc.RootElement.GetProperty("value").EnumerateArray())
+                                {
+                                    var ap = action.GetProperty("properties");
+                                    var aStatus = ap.TryGetProperty("status", out var as_) ? as_.GetString() : "?";
+                                    var aCode = ap.TryGetProperty("code", out var ac) ? ac.GetString() : "";
+                                    var aName = action.GetProperty("name").GetString();
+                                    if (aStatus == "Failed")
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.Write($"    ✗ {aName,-40}");
+                                        Console.ForegroundColor = prev;
+                                        Console.WriteLine($"  {aCode}");
+                                        if (ap.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
+                                            Console.WriteLine($"      {err}");
+                                    }
+                                }
+                            }
+                            catch { /* non-fatal */ }
+                        }
+                    }
+                }
+            }
+        }
+        catch { /* non-fatal */ }
     }
 }
 

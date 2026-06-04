@@ -40,11 +40,11 @@ The `RequestApproval` scope has `limit.timeout = PT1M`. Submit a request
 **above** the threshold and simply do not click Approve or Reject in the email:
 
 ```bash
-dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 30
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 90
 ```
 
 1. The approval email is sent.
-2. After ~30 s with no response, `RequestApproval` times out.
+2. After ~60 s with no response, `RequestApproval` times out.
 3. `HandleFailure` fires: dead-letter POST is attempted, then `Respond_502`.
 4. Your terminal receives **`HTTP 502`** before the 90 s connection limit.
 
