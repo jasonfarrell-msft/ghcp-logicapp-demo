@@ -12,13 +12,13 @@
 
 Everything else in this repo's setup already covers Consumption. Standard adds **two** small things — both are CLI-only, no IDE plugins:
 
-| Tool | Why | macOS install |
-|---|---|---|
-| `az` (Azure CLI) ≥ 2.60 with Bicep | Deploy Bicep + call ARM REST | already required by Scenario 01 |
-| `dotnet-script` | Runs `scripts/deploy-standard.csx` and `scripts/invoke-standard.csx` | already required by Scenario 01 |
-| `zip` | The deploy script bundles `standard/` into a zip and pushes it via `az webapp deploy` (no Functions Core Tools needed) | preinstalled on macOS / Linux |
+| Tool | Why |
+|---|---|
+| `az` (Azure CLI) ≥ 2.60 with Bicep | Deploy Bicep + call ARM REST. Already required by Scenario 01. |
+| `dotnet-script` | Runs `scripts/deploy-standard.csx` and `scripts/invoke-standard.csx`. Already required by Scenario 01. |
+| Zip utility on `PATH` | The deploy script bundles `standard/` into a zip and pushes it via `az webapp deploy`. Use the OS default: `zip` (macOS/Linux, preinstalled) or `Compress-Archive` / `tar -a -c -f` (Windows PowerShell). |
 
-You **do not** need Azure Functions Core Tools (`func`) for this scenario. Deployment is pure `az` + zip.
+You **do not** need Azure Functions Core Tools (`func`) for this scenario. Deployment is pure `az` + zip and works on macOS, Linux, and Windows.
 
 ## Why this is a great Copilot demo
 
@@ -300,7 +300,9 @@ This scenario is **additive** — the original Consumption Logic App stays deplo
 > 5. **Publish workflows** — unless `--skip-content` is passed:
 >    - Build a zip of the `standard/` directory (excluding
 >      `local.settings.json`, `.git/*`, `.vscode/*`, `node_modules/*`)
->      using the `zip` CLI on macOS/Linux.
+>      using whichever zip tool is available on the host
+>      (`zip` on macOS/Linux, `Compress-Archive` or `tar -a -c -f` on
+>      Windows).
 >    - Push it via `az webapp deploy --src-path <zip> --type zip` (this
 >      uses the Kudu zip-deploy endpoint and is the simplest path — no
 >      Functions Core Tools required).
