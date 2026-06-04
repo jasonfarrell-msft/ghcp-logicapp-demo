@@ -229,6 +229,16 @@ The script provisions the Storage Account, WS1 plan, and `workflowapp` site,
 then runs `func azure functionapp publish` to deploy the contents of
 `standard/` to the new site. Pass `--skip-content` to provision infra only.
 
+### Invoke (Standard)
+
+```bash
+dotnet script scripts/invoke-standard.csx -- --environment dev --amount 2500
+```
+
+Like `invoke.csx`, the Standard variant fetches the trigger URL automatically
+— but targets `la-approval-std-{env}` in `rg-ghcp-logicapp-{env}`
+using the Standard API endpoint.
+
 ### Run locally
 
 ```bash
