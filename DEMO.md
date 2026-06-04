@@ -16,24 +16,24 @@ show how **GitHub Copilot turns Logic App authoring and maintenance from
 JSON-wrangling into intent-driven editing**, keeping Bicep, workflow JSON,
 and connection bindings in sync in a single pass. We start by asking Copilot
 to *explain* what we already have, then evolve it through six concrete
-refactors that each touch multiple files — and finish with the high-stakes
+refactors that each touch multiple files — and the climax is the high-stakes
 one: a full Consumption → Standard migration.
 
 ## The narrative arc
 
-The scenarios are numbered in presentation order — `01` through `06` — starting
-where a real engineer would: "what is this thing?"
+The scenarios are numbered in presentation order — `01` through `06`.
 
 | Beat | Scenario | Why this slot |
 |---|---|---|
 | 1 | **01 Explain & document** | Open with comprehension. Sets context, surfaces issues that motivate scenarios 03 / 04. |
 | 2 | **02 Refactor: extract sub-flows** | First real edit. Shows Copilot navigates Logic Apps schema (`Scope`, `runAfter`) and the Bicep mirror in one pass. |
 | 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
-| 4 | **04 Teams notification** | New connector end-to-end — `$connections`, Bicep mapping, action body. Demonstrates breadth, not just depth. |
-| 5 | **05 Escalation branch** | Explore existing two-tier approval across five files. Shows Copilot can trace and explain cross-file features, not just build them. |
-| 6 | **06 Migrate Consumption → Standard** | Finale. The single biggest cross-cutting change Copilot can do for you here. |
+| 4 | **04 Escalation branch** | Business-rule change. Cross-file feature spanning workflow + 4 Bicep files, with all four outcomes visible in the console — no UI side effects needed. |
+| 5 | **05 Migrate Consumption → Standard** | **Climax.** The single biggest cross-cutting change Copilot can do for you here — different resources, different layout, different connection model — preserving the escalation logic from Beat 4 byte-for-byte. |
+| 6 | **06 Add Teams notification (on Standard)** | **Cuttable finale.** Bonus payoff that demonstrates how clean the V2-connection model is on Standard. The same prompt vocabulary you used in Beat 5 — V2, MSI, accessPolicies — applied to a second connector. |
 
-If short on time, cut **05** first (closest in shape to **04**).
+If short on time, **cut 06 first** — Teams is the encore, not the climax. The
+demo lands with Beat 5.
 
 ## Pre-flight checklist (do this BEFORE the audience walks in)
 
@@ -60,10 +60,9 @@ Run these once. They survive across the whole demo.
   az bicep build --file infra/main.bicep
   dotnet script scripts/deploy.csx -- --environment dev
   ```
-- [ ] **Authorize deployed API connections before running invoke**:
-  Logic App `la-approval-dev` → API connections → authorize each deployed
-  connection that the workflow uses. For the baseline, authorize:
-  - [ ] `con-office365-dev` via **Edit API connection** → **Authorize**
+- [ ] **Authorize the deployed API connection before running invoke**:
+  Logic App `la-approval-dev` → API connections → `con-office365-dev` →
+  **Edit API connection** → **Authorize**.
 - [ ] Smoke test passes (confirms the trigger and low-amount path):
   ```bash
   dotnet script scripts/invoke.csx -- --environment dev --amount 100
@@ -75,8 +74,9 @@ Run these once. They survive across the whole demo.
   ```
   ✅ Expect an approval email; clicking **Approve** returns `HTTP 200 OK`
   with `"status":"approved"`.
-- [ ] (Scenario 04 only) After deploying Teams, authorize `con-teams-dev`
-  before re-running `invoke.csx`.
+- [ ] (For Beat 6 only) Have a Teams **channel** ready and grab its
+  `groupId` and `channelId` (channel **⋯** → **Get link to channel** → URL
+  contains both). You'll add them to `dev.bicepparam` during the scenario.
 - [ ] Open these files in the editor before you begin:
   `infra/workflows/approval.workflow.json`,
   `infra/modules/logicApp.bicep`,
@@ -85,7 +85,10 @@ Run these once. They survive across the whole demo.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
 - [ ] In Copilot, pick your model/mode before starting:
   - Use **VS Code Agent mode** (no Chat mode).
-  - **All scenarios (01–06):** use **Claude Sonnet** throughout the demo.
+  - **Beats 1–4 and 6:** Claude **Sonnet 4.6 or higher**.
+  - **Beat 5 (migration):** Claude **Opus 4.6 or higher**. Sonnet drifts on
+    the nested Bicep + V2 connection + `connections.json` schema during the
+    migration. Opus is the right tool for the climax — switch deliberately.
   - Ask for "single diff only" to keep responses short during live narration.
   - Add "use the simplest valid approach, no alternatives" to keep reasoning light.
 
@@ -142,82 +145,104 @@ the graceful 502.
 `retryPolicy` JSON shape are the kinds of things people get subtly wrong by
 hand. The dead-letter pattern transfers to other workflows.
 
-### Beat 4 — Scenario 04: Teams notification
+### Beat 4 — Scenario 04: Escalation branch (business-rule change)
 
-> **Say this:** "New connector end-to-end. Wiring one in touches three
-> places that must agree — `$connections` in the workflow, the parameters
-> mapping in Bicep, and the action body. Watch Copilot do all three."
+> **Say this:** "The CFO wants a sign-off above $10K. I shouldn't need to
+> know Logic Apps internals to ship that. Watch one feature request ripple
+> across `main.bicep`, the module, both `.bicepparam` files, and the
+> workflow JSON in a single pass — and watch the console as the request
+> moves through both tiers."
 
-Open [`scenarios/04-add-teams-notification.md`](./scenarios/04-add-teams-notification.md).
-Make sure the Teams connection is authorized before you re-invoke.
+Open [`scenarios/04-add-escalation-branch.md`](./scenarios/04-add-escalation-branch.md).
+After Copilot lands the change, demo all three amounts to prove every
+outcome is reachable. Read the `responseStatus` out loud each time so the
+audience sees the state machine via the console:
 
-**Why this beat matters:** breadth. Shows the cross-file consistency story
-generalises to a different connector with a more verbose payload (the
-adaptive card).
+```bash
+dotnet script scripts/invoke.csx -- --environment dev --amount 250    # auto-approved
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500   # approved or rejected
+dotnet script scripts/invoke.csx -- --environment dev --amount 15000  # escalation-denied (or falls through)
+```
 
-### Beat 5 — Scenario 05: Add escalation branch
+**Why this beat matters:** demonstrates cross-file IaC orchestration without
+needing any new connectors. One business rule, five files, four reachable
+outcomes — all observable from the terminal. This sets up Beat 5: the
+escalation logic carries over to Standard byte-for-byte.
 
-> **Say this:** "Almost there. Let's add a second approver tier for really
-> high-value requests — above 10K goes to escalation@contoso.com first. If
-> they reject, we stop. If they approve, we continue to the standard
-> approver. This is the cross-file coordination story at its best — five
-> files that all have to agree."
-
-Open [`scenarios/05-add-escalation-branch.md`](./scenarios/05-add-escalation-branch.md).
-After Copilot adds the escalation logic, demo all three amounts (`250`,
-`2500`, `15000`) to prove all three branches work.
-
-**Why this beat matters:** demonstrates cross-file IaC orchestration. One
-feature request touches 5 files (workflow JSON, Bicep module, main.bicep,
-dev.bicepparam, prod.bicepparam) with environment-specific thresholds. The
-three test amounts prove the three-tier conditional logic (auto-approve <
-threshold, standard approval < escalation, escalation approval ≥ escalation)
-works correctly.
-
-### Beat 6 — Scenario 06: Migrate Consumption → Standard (finale)
+### Beat 5 — Scenario 05: Migrate Consumption → Standard (climax)
 
 > **Say this:** "We've been editing in place. Now the big one — migrate the
 > whole thing to Logic Apps Standard, side-by-side. Different Azure
-> resources, different on-disk layout, different connection model, and
-> local dev unlocked. Hours by hand. Minutes with Copilot."
+> resources, different on-disk layout, different connection model. And
+> the escalation logic we just wrote? It needs to come along
+> byte-for-byte. Hours by hand. Minutes with Copilot — but only if you
+> use the right tool. I'm switching to Opus for this one."
 
-Open [`scenarios/06-migrate-consumption-to-standard.md`](./scenarios/06-migrate-consumption-to-standard.md).
-Walk the five sub-prompts. Deploy with the new `scripts/deploy-standard.csx`
-that Copilot generates. Open both Logic Apps in the portal to compare.
+**Switch the model now:** Agent mode → Claude Opus 4.6+.
+
+Open [`scenarios/05-migrate-consumption-to-standard.md`](./scenarios/05-migrate-consumption-to-standard.md).
+This scenario is **two prompts**, not five: generate the migration plan,
+review it, paste it back as the implementation brief. Walk the audience
+through the plan when it lands — this is the moment where they see Copilot
+holding the entire migration in mind. Then accept the implementation diff,
+deploy, click **Authorize** in the portal for the new V2 connection, and
+re-run all three amounts against the Standard app.
+
+Open both Logic Apps in the portal at the end to compare side-by-side.
 
 **Why this beat matters:** this is the demo people will remember. It's the
 change Copilot is most differentiated at — a wide refactor across
 heterogeneous files where the ground truth lives in product docs, not in
-the repo.
+the repo. Plan-first with Opus is the pattern they should take home.
+
+### Beat 6 — Scenario 06: Add Teams notification on Standard (cuttable finale)
+
+> **Say this:** "Encore. Now that we're on Standard, watch how clean adding
+> a second connector is — same V2, MSI, accessPolicies pattern Copilot
+> already learned for Office 365. We're going to post an Adaptive Card to
+> Teams for every approval outcome, and it's additive, not invasive."
+
+**Switch the model back:** Agent mode → Claude Sonnet 4.6+. V2 connections
+on Standard are clean enough that Sonnet is reliable here.
+
+Open [`scenarios/06-add-teams-notification.md`](./scenarios/06-add-teams-notification.md).
+Make sure `teamsChannelId` and `teamsGroupId` land in `dev.bicepparam`,
+deploy, **Authorize** the new `con-teams-std-dev` connection in the portal,
+then run all three amounts and show the cards land in the channel.
+
+**Why this beat matters:** demonstrates the *shape* of post-migration work.
+Adding any connector on Standard is the same recipe — V2, MSI,
+accessPolicies, app settings, `connections.json` entry. SQL, ServiceBus,
+SharePoint: same pattern. **If short on time, this is the scenario to cut.**
 
 ## Between scenarios
 
-Bicep is idempotent — every scenario's redeploy is
+Bicep is idempotent — every Beat 1–4 redeploy is
 `dotnet script scripts/deploy.csx -- --environment dev` against the same RG.
-The trigger URL stays the same.
+Beats 5–6 redeploy with `dotnet script scripts/deploy-standard.csx -- --environment dev`.
+The trigger URLs stay the same within each app.
 
 ⚠️ **Do not run `scripts/reset.csx` between scenarios.** It deletes the
 resource group and re-authorizing the Office 365 connection is a portal
 click you don't want to do live. Reset is for end-of-demo cleanup only. If
-you must roll back code mid-demo, use `git restore .` and then
-`dotnet script scripts/deploy.csx -- --environment dev`.
+you must roll back code mid-demo, use `git restore .` and then redeploy.
 
 ## If something breaks
 
-The three failures most likely to hit you live, in order of probability:
+The failures most likely to hit you live, in order of probability:
 
 ### 1. `HTTP 502` on an above-threshold invoke
 
 **Cause:** the Office 365 connection isn't authorized.
 
-**Fix:** Portal → Logic App → API connections → `con-office365-dev` →
-**Edit API connection** → **Authorize**. Or fall back to
-`dotnet script scripts/invoke.csx -- --environment dev --amount 100` to skip
-the connector entirely and keep the demo moving.
+**Fix:** Portal → Logic App → API connections → `con-office365-dev`
+(or `con-office365-std-dev` for Standard) → **Edit API connection** →
+**Authorize**. Or fall back to `--amount 100` to skip the connector
+entirely and keep the demo moving.
 
-`invoke.csx` already prints this hint on a 502.
+`invoke.csx` and `invoke-standard.csx` both print this hint on a 502.
 
-### 2. `InvalidVariableInitialization` on `scripts/deploy.csx`
+### 2. `InvalidVariableInitialization` on `scripts/deploy.csx` (Consumption)
 
 **Cause:** Copilot moved an `InitializeVariable` action inside a `Scope`.
 Consumption Logic Apps forbid this.
@@ -228,8 +253,7 @@ Consumption Logic Apps forbid this.
 > Consumption Logic Apps. Move them back to the root `actions` and chain
 > them with `runAfter`.
 
-Re-run `az bicep build --file infra/main.bicep` then redeploy. This is
-scenario 02's documented gotcha — keep it as a teaching moment.
+Re-run `az bicep build --file infra/main.bicep` then redeploy.
 
 ### 3. `HTTP 401` from a manually-pasted trigger URL
 
@@ -237,25 +261,9 @@ scenario 02's documented gotcha — keep it as a teaching moment.
 truncates the URL.
 
 **Fix:** don't pass `--trigger-url` at all — let `invoke.csx` fetch it. If
-you must, single-quote the URL:
+you must, single-quote the URL.
 
-```bash
-dotnet script scripts/invoke.csx -- --trigger-url 'https://...&sig=...'
-```
-
-`invoke.csx` warns when the `sig=` parameter is missing.
-
-### 4. Teams notification doesn't appear (Scenario 04)
-
-**Cause:** Teams connection not authorized OR channel/group IDs not configured.
-
-**Fix:**
-- Portal → Logic App → API connections → `con-teams-dev` → **Edit API connection** → **Authorize**
-- Verify `infra/parameters/dev.bicepparam` has actual Teams IDs (not `YOUR_CHANNEL_ID_HERE`)
-- See README.md \"One-time setup\" section for instructions to get IDs from Teams
-- Redeploy after updating IDs: `dotnet script scripts/deploy.csx -- --environment dev`
-
-### 5. Scenario 06 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
+### 4. Beat 5 deploy fails with `InternalSubscriptionIsOverQuotaForSku`
 
 **Cause:** the subscription has zero `WorkflowStandard` (WS1) VM quota.
 Standard Logic Apps run on a dedicated App Service Plan and consume quota
@@ -263,11 +271,34 @@ even at 0 instances.
 
 **Fix:** request a quota increase via
 **Portal → Subscriptions → Usage + Quotas → WorkflowStandard** or use a
-different subscription. Until quota is available, treat scenario 06 as a
-**code walk-through** — the Bicep is valid and all files are in place; only
-the Azure provisioning step is blocked.
+different subscription. Until quota is available, treat Beat 5 as a
+**code walk-through** — the Bicep is valid and all files are in place;
+only the Azure provisioning step is blocked.
 
-### 5. `az deployment sub create` prints `ERROR: The content for this response was already consumed`
+### 5. Beat 5/6 first invoke returns `403 missing connection ACL`
+
+**Cause:** the V2 connection (`con-office365-std-dev` or
+`con-teams-std-dev`) is created Unauthorized. OAuth consent cannot be
+automated.
+
+**Fix:** open the portal URL the deploy script printed → **Authorize** →
+**Save** → re-run the deploy script (it will detect the change and restart
+the app) → re-invoke.
+
+### 6. Beat 6: Teams card doesn't appear
+
+**Cause:** Teams V2 connection not authorized, or `teamsChannelId` /
+`teamsGroupId` swapped.
+
+**Fix:**
+- Portal → workflow app → API connections → `con-teams-std-dev` →
+  **Authorize**.
+- Verify `teamsChannelId` and `teamsGroupId` in your `.bicepparam`. The
+  channel ID is the `threadId` from the Teams "Get link to channel" URL —
+  not the channel display name.
+- Redeploy: `dotnet script scripts/deploy-standard.csx -- --environment dev`.
+
+### 7. `az deployment sub create` prints `ERROR: The content for this response was already consumed`
 
 **Cause:** known bug in Azure CLI 2.74 where `--query` combined with a
 deployment that produces structured output can consume the response body
@@ -285,4 +316,4 @@ dotnet script scripts/reset.csx -- --environment dev
 ```
 
 Restores the working tree and deletes `rg-ghcp-logicapp-dev`. If you ran
-`prod` in scenario 05, repeat with `--environment prod`.
+`prod` in Beat 5, repeat with `--environment prod`.
