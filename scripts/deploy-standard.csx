@@ -38,15 +38,14 @@ if (buildResult != 0)
 // ──────────────────────────────────────────────────────────────
 Common.WriteHeading($"Deploying Standard infrastructure ({environment})");
 
-var rgName = $"rg-ghcp-logicapp-{environment}";
 var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 var deploymentName = $"ghcp-logicapp-standard-{environment}-{stamp}";
 
 var deployResult = Common.Run("az", new[]
 {
-    "deployment", "group", "create",
+    "deployment", "sub", "create",
     "--name", deploymentName,
-    "--resource-group", rgName,
+    "--location", location,
     "--template-file", mainFile,
     "--parameters", paramFile,
     "--parameters", $"location={location}",
@@ -65,9 +64,8 @@ Common.WriteHeading("Retrieving deployment outputs");
 
 var showCmd = Common.Capture("az", new[]
 {
-    "deployment", "group", "show",
+    "deployment", "sub", "show",
     "--name", deploymentName,
-    "--resource-group", rgName,
     "--query", "properties.outputs",
     "-o", "json",
 });
