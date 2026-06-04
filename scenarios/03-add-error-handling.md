@@ -32,12 +32,23 @@
 ```bash
 az bicep build --file infra/main.bicep
 dotnet script scripts/deploy.csx -- --environment dev
-# Force a failure: invoke BEFORE the Office 365 connection is authorized
-# (or temporarily de-authorize it in the portal).
-dotnet script scripts/invoke.csx -- --environment dev --amount 2500
 ```
 
-✅ Expected: `HTTP 502` (graceful) instead of an opaque crash. Portal run history shows `HandleFailure` executed and the dead-letter POST attempted.
+### Timeout / error-handling demo
+
+The `RequestApproval` scope has `limit.timeout = PT1M`. Submit a request
+**above** the threshold and simply do not click Approve or Reject in the email:
+
+```bash
+dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 90
+```
+
+1. The approval email is sent.
+2. After ~60 s with no response, `RequestApproval` times out.
+3. `HandleFailure` fires: dead-letter POST is attempted, then `Respond_502`.
+4. Your terminal receives **`HTTP 502`** before the 90 s connection limit.
+
+✅ Expected: `HTTP 502` `{ "status": "failed", "runId": "..." }` — graceful failure instead of an opaque crash. Portal run history shows `HandleFailure` executed and `Post_to_dead_letter` attempted.
 
 ## Talking points
 - `runAfter` with multiple statuses (`["Failed","TimedOut","Skipped"]`) is easy to mistype by hand — Copilot gets it right.

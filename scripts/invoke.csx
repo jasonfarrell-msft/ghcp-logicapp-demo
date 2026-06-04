@@ -7,6 +7,12 @@
 //                                       [--trigger-url '<url>'] [--request-id REQ-1]
 //                                       [--requester foo@bar] [--description "..."]
 //                                       [--trigger-name When_an_approval_request_is_received]
+//                                       [--timeout <seconds>]   default: 300
+//
+// Timeout demo (show the 502 HandleFailure path):
+//   Set RequestApproval limit.timeout to PT1M in the workflow, redeploy, then:
+//   dotnet script scripts/invoke.csx -- --environment dev --amount 2500 --timeout 90
+//   Wait ~60 s without approving — the scope times out and you receive HTTP 502.
 //
 // If --trigger-url is omitted, the script asks Azure for the workflow's callback URL,
 // avoiding the unquoted '&' pitfall when copying URLs on the command line.
@@ -25,6 +31,7 @@ var requestId = Common.Get(parsed, "request-id", $"REQ-{Random.Shared.Next(1000,
 var requester = Common.Get(parsed, "requester", "alice@contoso.com");
 var description = Common.Get(parsed, "description", "Demo approval request");
 var triggerName = Common.Get(parsed, "trigger-name", "When_an_approval_request_is_received");
+var timeoutSeconds = int.Parse(Common.Get(parsed, "timeout", "300"));
 string triggerUrl = parsed.TryGetValue("trigger-url", out var u) ? u : null;
 
 if (environment != "dev" && environment != "prod")
@@ -55,12 +62,17 @@ var body = JsonSerializer.Serialize(new
     description,
 });
 
+if (timeoutSeconds < 90)
+    Common.WriteWarn($"--timeout {timeoutSeconds}s is under the 90 s HTTP response window — the workflow must complete (or time out) before then to return a synchronous response.");
+if (timeoutSeconds >= 90)
+    Common.WriteWarn($"Waiting up to {timeoutSeconds}s for a synchronous response. If RequestApproval has a limit.timeout < {timeoutSeconds}s it will time out and HandleFailure should return HTTP 502.");
+
 Common.WriteHeading($"POST {triggerUrl}");
 Console.WriteLine(body);
 
 try
 {
-    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
     using var request = new HttpRequestMessage(HttpMethod.Post, triggerUrl)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -85,7 +97,10 @@ try
         [403] = "Hint: Access denied. Check IP restrictions on the workflow.",
         [404] = "Hint: Workflow or trigger not found. Confirm the workflow is deployed and enabled.",
         [500] = "Hint: The run started but an action failed, often because the Office 365 connection is not authorized in the portal.",
-        [502] = "Hint: 502 means a downstream connector returned an error. Usually the Office 365 connection is not authorized. Open the Logic App in the portal, then API connections, office365, Edit API connection, Authorize. Or run: dotnet script scripts/invoke.csx -- --amount 100 to skip the connector.",
+        [502] = "HTTP 502 — two possible causes:\n" +
+                "  (a) HandleFailure path triggered: RequestApproval timed out or failed (expected in the error-handling demo).\n" +
+                "  (b) Office 365 connection not authorized: open the Logic App in the portal → API connections → office365 → Edit → Authorize.\n" +
+                "  To demo the timeout path: set RequestApproval limit.timeout to PT1M, redeploy, then run with --timeout 90.",
     };
     if (hints.TryGetValue(status, out var hint)) Common.WriteWarn(hint);
     return 1;
