@@ -25,33 +25,56 @@ There is **one** approver and **one** threshold. The console (via `invoke.csx`) 
 ## Model guidance
 
 - Use **VS Code Agent mode** with **Claude Sonnet 4.6 or higher**.
-- Add these to context: `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`, `infra/main.bicep`, and both `.bicepparam` files.
-- Ask for one consolidated diff across all of them.
+- Run **two prompts in sequence** — Prompt 1 is infra only (fast), Prompt 2 is workflow logic only (fast). Do not combine them.
+- Context for **Prompt 1**: `infra/main.bicep`, `infra/modules/logicApp.bicep`, `infra/parameters/dev.bicepparam`, `infra/parameters/prod.bicepparam`.
+- Context for **Prompt 2**: `infra/workflows/approval.workflow.json` only.
 
-## Prompt (copy/paste)
+## Prompt 1 — Thread parameters through infra (copy/paste)
 
-> I want to add a high-value escalation tier to my approval workflow. Please update the workflow JSON, the Bicep module, `main.bicep`, and both `.bicepparam` files together.
+> Add two new parameters to the infra layer only — do not change any workflow behavior yet.
 >
-> **New parameters** (thread them through `main.bicep` → `logicApp.bicep` → workflow, just like the existing `approverEmail` and `threshold`):
-> - `escalationApproverEmail` (string) — dev: `escalation@contoso.com`, prod: `cfo-approvals@contoso.com`
-> - `escalationThreshold` (int) — dev: `10000`, prod: `25000`
+> In `infra/main.bicep`:
+> - Declare `param escalationApproverEmail string` and `param escalationThreshold int = 10000`.
+> - Pass both into the `logicApp` module call alongside the existing `approverEmail` and `threshold`.
 >
-> **New behavior:**
-> - If `amount > escalationThreshold`, send the approval email to `escalationApproverEmail` **first**.
->   - If they **reject** → set `responseStatus` to `escalation-denied`, skip the standard approval, and return.
->   - If they **approve** → fall through to the existing standard approval flow unchanged.
-> - If `amount <= escalationThreshold`, the workflow behaves exactly like today.
+> In `infra/modules/logicApp.bicep`:
+> - Add matching `param escalationApproverEmail string` and `param escalationThreshold int = 10000` declarations.
+> - Add two `InitializeVariable` actions at the end of the root init chain (after `Initialize_decision`): `Initialize_escalationApproverEmail` (string, value `escalationApproverEmail`) and `Initialize_escalationThreshold` (integer, value `escalationThreshold`). Chain them: `Initialize_escalationApproverEmail` runAfter `Initialize_decision`, `Initialize_escalationThreshold` runAfter `Initialize_escalationApproverEmail`.
+> - Add a third `InitializeVariable` action `Initialize_skipApproval` (boolean, value `false`) runAfter `Initialize_escalationThreshold`.
+> - Update `RequestApproval`'s `runAfter` to point to `Initialize_skipApproval` instead of `Initialize_decision`.
 >
-> **Response shape:** the existing HTTP 200 response body must include the final `responseStatus`, so the four possible values (`auto-approved`, `approved`, `rejected`, `escalation-denied`) are all visible to the caller. Reuse the same `skipApproval` pattern the workflow already uses for auto-approve — don't invent a new gating mechanism.
+> In `infra/parameters/dev.bicepparam`: add `param escalationApproverEmail = 'escalation@contoso.com'` and `param escalationThreshold = 10000`.
 >
-> Please keep retry policies, the `HandleFailure` scope, and the existing error handling intact. Use the simplest valid approach, no alternatives.
+> In `infra/parameters/prod.bicepparam`: add `param escalationApproverEmail = 'cfo-approvals@contoso.com'` and `param escalationThreshold = 25000`.
+>
+> No changes to `infra/workflows/approval.workflow.json`. Use the simplest valid approach, no alternatives.
+
+## Prompt 2 — Add escalation logic to the workflow (copy/paste)
+
+> Update `infra/workflows/approval.workflow.json` only. Assume `escalationApproverEmail`, `escalationThreshold`, and `skipApproval` variables are already initialized at the root level (added by a previous step).
+>
+> Inside the `RequestApproval` scope, before `Check_amount_against_threshold`:
+> 1. Add `Check_escalation_threshold` (type `If`): expression `amount > escalationThreshold`.
+>    - **True branch:** send an approval email to `@variables('escalationApproverEmail')` via the same Office 365 connector used by `Send_approval_email`. Subject prefix `"ESCALATION - "`. Same retry policy (exponential, 4 retries, PT10S). Then `Switch_on_escalation_response` on `body('Send_escalation_email')?['SelectedOption']`:
+>      - **Approve case:** empty actions (fall through).
+>      - **Reject case:** `Set_decision_escalation_denied` (SetVariable `decision = "escalation-denied"`) then `Set_skipApproval_true` (SetVariable `skipApproval = true`) runAfter it.
+>    - **False branch (else):** empty actions.
+> 2. `Check_amount_against_threshold` runs `runAfter: { Check_escalation_threshold: ["Succeeded"] }`. Add `{ "equals": ["@variables('skipApproval')", false] }` as a second condition (AND) on its expression.
+> 3. In the **false/else** branch of `Check_amount_against_threshold`, wrap `Set_decision_auto_approved` in a new `If` named `Check_skip_before_auto_approve` with expression `skipApproval == false`. Empty else branch.
+>
+> In the `Respond` scope, replace `Switch_on_decision` and its three cases with a single `Response` action named `Respond_result`: HTTP 200, body `{ "requestId": "@triggerBody()?['requestId']", "responseStatus": "@variables('decision')" }`.
+>
+> Keep all retry policies, `HandleFailure` scope, and existing `runAfter` chains intact. Use the simplest valid approach, no alternatives.
 
 ## What should change
 
-- **`infra/main.bicep`** — two new parameters, passed into the module
-- **`infra/modules/logicApp.bicep`** — two new parameters, passed into the workflow `parameters`
-- **`infra/workflows/approval.workflow.json`** — two new workflow parameters, an escalation branch that reuses the same Office 365 connector, and a final response that surfaces all four status values
+**After Prompt 1:**
+- **`infra/main.bicep`** — two new `param` declarations + both passed into the module call
+- **`infra/modules/logicApp.bicep`** — two new `param` declarations + three new root `InitializeVariable` actions (`escalationApproverEmail`, `escalationThreshold`, `skipApproval`) + `RequestApproval` `runAfter` updated
 - **`infra/parameters/dev.bicepparam`** and **`prod.bicepparam`** — values for the two new params
+
+**After Prompt 2:**
+- **`infra/workflows/approval.workflow.json`** — escalation branch inside `RequestApproval` scope, `skipApproval` gating on `Check_amount_against_threshold`, `Check_skip_before_auto_approve` guard in the else branch, `Respond` scope collapsed to a single `Respond_result` action
 
 ## Verify
 
@@ -83,8 +106,9 @@ dotnet script scripts/invoke.csx -- --environment dev --amount 15000
 
 ## Talking points
 
-- **Business-rule change, not a rewrite.** A non-Logic-Apps expert can describe the rule ("CFO sign-off above $10K") and Copilot wires up the parameters, branch, and gating across five files in a single pass.
-- **Cross-file coordination.** One feature request touches `main.bicep`, the module, both `.bicepparam` files, and the workflow JSON — all of which must stay in agreement.
+- **Business-rule change, not a rewrite.** A non-Logic-Apps expert can describe the rule ("CFO sign-off above $10K") and Copilot wires up the parameters, branch, and gating — no Logic Apps internals knowledge required.
+- **Separation of concerns.** Prompt 1 is pure infra plumbing (fast, low risk). Prompt 2 is pure workflow logic (isolated, easier to review). Splitting by concern is faster than one giant prompt and easier to demo live.
+- **Cross-file coordination.** Even split across two prompts, one feature request keeps `main.bicep`, the module, both `.bicepparam` files, and the workflow JSON in agreement.
 - **Environment-specific thresholds.** Dev escalates at 10K, prod at 25K — same code, different risk posture, controlled by `.bicepparam`.
 - **Console as observability.** Every outcome is reflected in the HTTP 200 body, so `invoke.csx` is enough to demo the full state machine — no extra connectors needed.
 
