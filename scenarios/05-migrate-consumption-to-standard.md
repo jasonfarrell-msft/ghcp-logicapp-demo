@@ -33,6 +33,8 @@ You **do not** need Azure Functions Core Tools (`func`).
 
 Keep `infra/workflows/approval.workflow.json` and `infra/modules/logicApp.bicep` open in editor tabs the entire scenario. They anchor Copilot to the existing Consumption shape — including the escalation branch from Scenario 04 — which the Standard version must preserve.
 
+> ⏱️ **Note:** Due to the complexity of this scenario, queries can take upwards of 5-10 minutes to complete.
+
 ## Step 1 — Generate the migration plan
 
 > Read `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`, `infra/main.bicep`, and both files under `infra/parameters/`. Produce a migration plan to move this Consumption Logic App to a Logic Apps **Standard** (single-tenant) project, preserving the approval workflow's behavior **exactly**, including the escalation-branch logic, the `skipApproval` gate, the four `responseStatus` values (`auto-approved`, `approved`, `rejected`, `escalation-denied`), retry policies, and the `HandleFailure` scope. Deployment target is **Azure only** — no local runtime, no `func start`.
