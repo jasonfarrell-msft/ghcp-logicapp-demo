@@ -104,8 +104,8 @@ narration below is what to say out loud as you do it.
 > instead."
 
 Open [`scenarios/01-explain-and-document.md`](./scenarios/01-explain-and-document.md).
-Paste both prompts. Show `docs/approval-workflow.md` next to the portal
-designer.
+Paste both prompts. Show the generated `docs/approval-workflow.md` next to
+the portal designer.
 
 **Why this beat matters:** sets context, builds trust that Copilot reads
 the workflow correctly, and the follow-up "review for issues" prompt
@@ -197,7 +197,7 @@ Open both Logic Apps in the portal at the end to compare side-by-side.
 **Switch the model back:** Agent mode → Claude Sonnet 4.6+.
 
 Open [`scenarios/06-externalize-config-to-appsettings.md`](./scenarios/06-externalize-config-to-appsettings.md).
-This is a single prompt — Sonnet handles it cleanly. After the redeploy, navigate to Portal → `la-approval-std-dev` → **Settings** → **Environment variables** and show `ThresholdAmount`, `ApproverEmail`, etc. in the list. Open `standard/Approval/workflow.json` side-by-side to show the values are *gone* from the code.
+This is a single prompt — Sonnet handles it cleanly. After the redeploy, navigate to Portal → `la-approval-std-dev` → **Settings** → **Environment variables** and show `ThresholdAmount`, `ApproverEmail`, etc. in the list. Open the generated `standard/Approval/workflow.json` side-by-side to show the values are *gone* from the code.
 
 **Why this beat matters:** it answers "what do I get from Standard beyond scalability?" with something concrete and immediately understandable to a non-engineer. The portal proof — values in App Settings, nothing in the JSON — is a memorable close. It also rounds out the story: Beat 1 was comprehension, Beat 5 was the big lift, Beat 6 is the payoff.
 
