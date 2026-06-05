@@ -21,8 +21,8 @@ to set it up.
 ### Model and VS Code mode guidance (for live demos)
 
 - Use **VS Code Agent mode** (no Chat mode) so the agent makes the edits directly.
-- **Beats 1–4 (scenarios 01–04):** use **Claude Sonnet 4.6 or higher**.
-- **Beat 5 (scenario 05 — migration):** switch to **Claude Opus 4.6 or higher**. Sonnet drifts on the nested Bicep + V2 connection + `connections.json` schema during the migration.
+- **Beats 1–4 and 6 (scenarios 01–04, 06):** use **Claude Sonnet 4.6 or higher**.
+- **Beat 5 (scenario 05 — migration):** switch to **Claude Opus 4.6 or higher**. Sonnet drifts on the nested Bicep + V2 connection + `connections.json` schema during the migration. Switch back to Sonnet for Beat 6.
 - To keep thinking lightweight, add: "use the simplest valid approach, no alternatives."
 - If a response gets verbose, ask for: "single diff only, no extra explanation."
 
@@ -184,15 +184,19 @@ dotnet script scripts/deploy.csx -- --environment dev
 | 03 | Add error handling | `retryPolicy`, failure scopes, dead-letter |
 | 04 | Add an escalation branch | Cross-file IaC consistency — one business rule, five files, four outcomes |
 | 05 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
+| 06 | Externalize config to App Settings | Standard-exclusive: `@appsetting()` in workflow expressions; portal proof |
 
 Scenarios are numbered in presentation order. See [`DEMO.md`](./DEMO.md) for
 the full narrative arc, talking points, and per-beat narration.
 
 ## Standard (Logic Apps Standard) — side-by-side
 
-Scenario 05 introduces a **side-by-side Logic Apps Standard** project. The
+Scenarios 05–06 use a **side-by-side Logic Apps Standard** project. The
 original Consumption deployment under `infra/` stays in place so both
 runtimes can be compared live.
+
+- **Scenario 05** migrates the Consumption app to Standard, preserving all escalation logic.
+- **Scenario 06** externalizes the hard-coded threshold and email values to Azure App Settings — a Standard-exclusive capability.
 
 ```
 standard/

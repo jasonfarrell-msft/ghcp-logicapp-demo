@@ -15,9 +15,10 @@ definition, the IaC that deploys it, and the connection wiring. Today we
 show how **GitHub Copilot turns Logic App authoring and maintenance from
 JSON-wrangling into intent-driven editing**, keeping Bicep, workflow JSON,
 and connection bindings in sync in a single pass. We start by asking Copilot
-to *explain* what we already have, then evolve it through five concrete
-refactors that each touch multiple files — and the climax is the high-stakes
-one: a full Consumption → Standard migration.
+to *explain* what we already have, then evolve it through six concrete
+refactors that each touch multiple files — and the climax is the
+Consumption → Standard migration, followed by a beat that shows off a
+capability Standard has that Consumption simply cannot match.
 
 ## The narrative arc
 
@@ -30,6 +31,7 @@ The scenarios are numbered in presentation order — `01` through `06`.
 | 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
 | 4 | **04 Escalation branch** | Business-rule change. Cross-file feature spanning workflow + 4 Bicep files, with all four outcomes visible in the console — no UI side effects needed. |
 | 5 | **05 Migrate Consumption → Standard** | **Climax.** The single biggest cross-cutting change Copilot can do for you here — different resources, different layout, different connection model — preserving the escalation logic from Beat 4 byte-for-byte. |
+| 6 | **06 Externalize config to App Settings** | **Landing beat.** Shows a Standard-exclusive capability: business rules in App Settings instead of code. Portal proof: threshold is gone from the JSON, visible in Environment variables. |
 
 ## Pre-flight checklist (do this BEFORE the audience walks in)
 
@@ -78,10 +80,11 @@ Run these once. They survive across the whole demo.
 - [ ] Open the deployed Logic App in the Azure portal in a side tab.
 - [ ] In Copilot, pick your model/mode before starting:
   - Use **VS Code Agent mode** (no Chat mode).
-  - **Beats 1–4:** Claude **Sonnet 4.6 or higher**.
+  - **Beats 1–4 and 6:** Claude **Sonnet 4.6 or higher**.
   - **Beat 5 (migration):** Claude **Opus 4.6 or higher**. Sonnet drifts on
     the nested Bicep + V2 connection + `connections.json` schema during the
-    migration. Opus is the right tool for the climax — switch deliberately.
+    migration. Opus is the right tool for the migration — switch deliberately,
+    then switch back to Sonnet for Beat 6.
   - Ask for "single diff only" to keep responses short during live narration.
   - Add "use the simplest valid approach, no alternatives" to keep reasoning light.
 
@@ -162,7 +165,7 @@ needing any new connectors. One business rule, five files, four reachable
 outcomes — all observable from the terminal. This sets up Beat 5: the
 escalation logic carries over to Standard byte-for-byte.
 
-### Beat 5 — Scenario 05: Migrate Consumption → Standard (climax)
+### Beat 5 — Scenario 05: Migrate Consumption → Standard
 
 > **Say this:** "We've been editing in place. Now the big one — migrate the
 > whole thing to Logic Apps Standard, side-by-side. Different Azure
@@ -174,6 +177,8 @@ escalation logic carries over to Standard byte-for-byte.
 **Switch the model now:** Agent mode → Claude Opus 4.6+.
 
 Open [`scenarios/05-migrate-consumption-to-standard.md`](./scenarios/05-migrate-consumption-to-standard.md).
+
+**After this beat, switch back to Sonnet** — Beat 6 is a targeted edit.
 This scenario is **two prompts**, not five: generate the migration plan,
 review it, paste it back as the implementation brief. Walk the audience
 through the plan when it lands — this is the moment where they see Copilot
@@ -183,16 +188,24 @@ re-run all three amounts against the Standard app.
 
 Open both Logic Apps in the portal at the end to compare side-by-side.
 
-**Why this beat matters:** this is the demo people will remember. It's the
-change Copilot is most differentiated at — a wide refactor across
-heterogeneous files where the ground truth lives in product docs, not in
-the repo. Plan-first with Opus is the pattern they should take home.
+**Why this beat matters:** the migration is the widest refactor Copilot can do here. Plan-first with Opus is the pattern they should take home.
+
+### Beat 6 — Scenario 06: Externalize config to App Settings (landing beat)
+
+> **Say this:** "We migrated. But look at the workflow JSON — the threshold and approver email are still hard-coded. In Logic Apps Standard, App Settings are first-class citizens in workflow expressions. Let's move those values out of the code and into the hosting environment. After this, a business analyst can change the approval threshold in the portal without touching a single file."
+
+**Switch the model back:** Agent mode → Claude Sonnet 4.6+.
+
+Open [`scenarios/06-externalize-config-to-appsettings.md`](./scenarios/06-externalize-config-to-appsettings.md).
+This is a single prompt — Sonnet handles it cleanly. After the redeploy, navigate to Portal → `la-approval-std-dev` → **Settings** → **Environment variables** and show `ThresholdAmount`, `ApproverEmail`, etc. in the list. Open `standard/Approval/workflow.json` side-by-side to show the values are *gone* from the code.
+
+**Why this beat matters:** it answers "what do I get from Standard beyond scalability?" with something concrete and immediately understandable to a non-engineer. The portal proof — values in App Settings, nothing in the JSON — is a memorable close. It also rounds out the story: Beat 1 was comprehension, Beat 5 was the big lift, Beat 6 is the payoff.
 
 ## Between scenarios
 
 Bicep is idempotent — every Beat 1–4 redeploy is
 `dotnet script scripts/deploy.csx -- --environment dev` against the same RG.
-Beat 5 redeploys with `dotnet script scripts/deploy-standard.csx -- --environment dev`.
+Beats 5 and 6 redeploy with `dotnet script scripts/deploy-standard.csx -- --environment dev`.
 The trigger URLs stay the same within each app.
 
 ⚠️ **Do not run `scripts/reset.csx` between scenarios.** It deletes the
