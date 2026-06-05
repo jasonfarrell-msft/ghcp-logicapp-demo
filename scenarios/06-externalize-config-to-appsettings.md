@@ -30,8 +30,8 @@ These values are invisible to operators and require a code change + redeploy to 
 
 ## Model guidance
 
-- Use **VS Code Agent mode** with **Claude Sonnet 4.5 or higher**. This is a targeted cross-file edit; Sonnet handles it well.
-- VSCode Agent Mode will use all files in the solution for context.
+- Use **VS Code Agent mode** with **Claude Sonnet 4.6 or higher**. This is a targeted cross-file edit; Sonnet handles it well.
+- Add to context: `standard/Approval/workflow.json`, `infra-standard/modules/logicAppStandard.bicep`, `infra-standard/main.bicep`, and both `infra-standard/parameters/*.bicepparam` files.
 - One consolidated diff across all five files.
 
 ## Prompt (copy/paste)

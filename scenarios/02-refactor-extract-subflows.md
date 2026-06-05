@@ -5,13 +5,12 @@
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **Claude Sonnet 4.5**.
-- VSCode Agent Mode will use all files in the solution for context.
+- Prefer **Claude Sonnet 4.5** with strict file targeting.
 - Ask for "one combined diff across both files, minimal explanation, simplest valid approach."
 
 ## Prompt
 
-> Refactor the workflow so that:
+> Open `infra/workflows/approval.workflow.json`. Refactor the workflow so that:
 > 1. `InitializeVariable` actions stay at the **root** level of `actions`
 >    (Logic Apps forbids `InitializeVariable` inside a `Scope`). Keep them
 >    chained at the top.
