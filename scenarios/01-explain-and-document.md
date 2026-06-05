@@ -5,12 +5,13 @@
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **Claude Sonnet 4.5** with a constrained prompt (exact file + exact output).
+- Prefer **Claude Sonnet 4.5**.
+- VSCode Agent Mode will use all files in the solution for context.
 - Ask for "single markdown output only, simplest valid approach."
 
 ## Prompt
 
-> Read `infra/workflows/approval.workflow.json` and produce:
+> Produce:
 > 1. A concise plain-English summary (max 8 bullets) of what the workflow
 >    does, including trigger, branches, and outputs.
 > 2. A Mermaid `flowchart TD` diagram showing the actions and their

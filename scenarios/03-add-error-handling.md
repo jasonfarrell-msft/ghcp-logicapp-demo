@@ -5,12 +5,13 @@
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **Claude Sonnet 4.5** with strict file targeting.
+- Prefer **Claude Sonnet 4.5**.
+- VSCode Agent Mode will use all files in the solution for context.
 - Ask for "single diff only, simplest valid approach" so deployment verification can start quickly.
 
 ## Prompt
 
-> In `infra/workflows/approval.workflow.json`:
+> Update the workflow to:
 > 1. Add a `retryPolicy` to `Send_approval_email` (exponential, 4 retries,
 >    PT10S minimum interval).
 > 2. Add a new `Scope` named `HandleFailure` that runs only when
