@@ -5,7 +5,7 @@
 ## Model guidance (fast demo flow)
 
 - Use **VS Code Agent mode**.
-- Prefer **Claude Sonnet 4.5** with a constrained prompt (exact file + exact output).
+- Prefer **Claude Sonnet 4.6 or higher** with a constrained prompt (exact file + exact output).
 - Ask for "single markdown output only, simplest valid approach."
 
 ## Prompt

@@ -24,7 +24,7 @@ There is **one** approver and **one** threshold. The console (via `invoke.csx`) 
 
 ## Model guidance
 
-- Use **VS Code Agent mode** with **Claude Sonnet 4.5 or higher**.
+- Use **VS Code Agent mode** with **Claude Sonnet 4.6 or higher**.
 - Add these to context: `infra/workflows/approval.workflow.json`, `infra/modules/logicApp.bicep`, `infra/main.bicep`, and both `.bicepparam` files.
 - Ask for one consolidated diff across all of them.
 
