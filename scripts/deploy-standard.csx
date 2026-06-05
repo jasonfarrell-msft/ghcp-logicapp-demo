@@ -1,15 +1,23 @@
 #load "lib/common.csx"
-// Deploy Logic Apps Standard infrastructure and workflow content.
-// Usage: dotnet script scripts/deploy-standard.csx -- [--environment dev|prod] [--skip-content]
+// Deploy the Logic Apps Standard side-by-side project.
+// Usage: dotnet script scripts/deploy-standard.csx -- [--environment dev|prod] [--location swedencentral] [--skip-content]
 
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text.Json;
 
 var parsed = Common.ParseArgs(Args);
 var environment = Common.Get(parsed, "environment", "dev");
 var location = Common.Get(parsed, "location", "swedencentral");
-var skipContent = parsed.ContainsKey("skip-content");
+var skipContent = Common.GetFlag(parsed, "skip-content");
+// --content-only: skip bicep build + ARM deployment, only re-zip and re-deploy
+// the workflow content. Useful for tight iteration loops while debugging
+// workflow.json. Each invocation increments scripts/.build-version and stamps
+// it into the workflow's `definition.description` so you can confirm the
+// runtime is loading your latest edit.
+var contentOnly = Common.GetFlag(parsed, "content-only");
 
 if (environment != "dev" && environment != "prod")
 {
@@ -18,366 +26,415 @@ if (environment != "dev" && environment != "prod")
 }
 
 var root = Common.RepoRoot();
+var mainFile  = Path.Combine(root, "infra-standard", "main.bicep");
 var paramFile = Path.Combine(root, "infra-standard", "parameters", $"{environment}.bicepparam");
-var mainFile = Path.Combine(root, "infra-standard", "main.bicep");
 var standardDir = Path.Combine(root, "standard");
+var zipPath = Path.Combine(root, $"standard-{environment}.zip");
+var buildVersionFile = Path.Combine(root, "scripts", ".build-version");
 
-// ──────────────────────────────────────────────────────────────
-// Phase 1: Build Bicep
-// ──────────────────────────────────────────────────────────────
-Common.WriteHeading("Building Bicep template");
-var buildResult = Common.Run("az", new[] { "bicep", "build", "--file", mainFile });
-if (buildResult != 0)
+string rgName, workflowAppName, office365ConnectionName;
+
+if (contentOnly)
 {
-    Common.WriteError("Bicep build failed.");
-    return buildResult;
-}
-
-// ──────────────────────────────────────────────────────────────
-// Phase 2: Deploy infrastructure
-// ──────────────────────────────────────────────────────────────
-Common.WriteHeading($"Deploying Standard infrastructure ({environment})");
-
-var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-var deploymentName = $"ghcp-logicapp-standard-{environment}-{stamp}";
-
-var deployResult = Common.Run("az", new[]
-{
-    "deployment", "sub", "create",
-    "--name", deploymentName,
-    "--location", location,
-    "--template-file", mainFile,
-    "--parameters", paramFile,
-    "--parameters", $"location={location}",
-});
-
-if (deployResult != 0)
-{
-    Common.WriteError("Infrastructure deployment failed.");
-    return deployResult;
-}
-
-// ──────────────────────────────────────────────────────────────
-// Phase 3: Retrieve deployment outputs
-// ──────────────────────────────────────────────────────────────
-Common.WriteHeading("Retrieving deployment outputs");
-
-var showCmd = Common.Capture("az", new[]
-{
-    "deployment", "sub", "show",
-    "--name", deploymentName,
-    "--query", "properties.outputs",
-    "-o", "json",
-});
-
-if (showCmd.ExitCode != 0 || string.IsNullOrWhiteSpace(showCmd.Stdout))
-{
-    Common.WriteError("Could not retrieve deployment outputs.");
-    if (!string.IsNullOrWhiteSpace(showCmd.Stderr)) Common.WriteError(showCmd.Stderr);
-    return 1;
-}
-
-string workflowAppName, resourceGroupName;
-try
-{
-    using var doc = JsonDocument.Parse(showCmd.Stdout);
-    workflowAppName = doc.RootElement.GetProperty("workflowAppName").GetProperty("value").GetString();
-    resourceGroupName = doc.RootElement.GetProperty("resourceGroupName").GetProperty("value").GetString();
-    Console.WriteLine($"  Workflow App: {workflowAppName}");
-    Console.WriteLine($"  Resource Group: {resourceGroupName}");
-}
-catch (Exception ex)
-{
-    Common.WriteError($"Could not parse deployment outputs: {ex.Message}");
-    return 1;
-}
-
-// ──────────────────────────────────────────────────────────────
-// Phase 4: Publish workflow content
-// ──────────────────────────────────────────────────────────────
-if (skipContent)
-{
-    Common.WriteWarn("Skipping workflow content publish (--skip-content).");
+    // Skip bicep + ARM. Resolve names from convention (matches main.bicep).
+    rgName                  = $"rg-ghcp-logicapp-{environment}";
+    workflowAppName         = $"la-approval-std-{environment}";
+    office365ConnectionName = $"con-office365-std-{environment}";
+    Common.WriteWarn($"--content-only: skipping Phases 1+2 (bicep build + ARM deploy)");
+    Common.WriteWarn($"   targeting rg={rgName}, site={workflowAppName}");
 }
 else
 {
-    Common.WriteHeading("Publishing workflows...");
-    Console.WriteLine($"Zip-deploying {standardDir} to {workflowAppName}");
+    // --- Phase 1: bicep build -----------------------------------------------
+    Common.WriteHeading($"[1/7] Building Bicep template {mainFile}");
+    var build = Common.Run("az", new[] { "bicep", "build", "--file", mainFile });
+    if (build != 0) { Common.WriteError("Bicep build failed."); return build; }
 
-    var shell = Environment.OSVersion.Platform == PlatformID.Unix ? "/bin/zsh" : "cmd.exe";
-    var shellArg = Environment.OSVersion.Platform == PlatformID.Unix ? "-c" : "/c";
+    // --- Phase 2: subscription-scoped deployment ----------------------------
+    var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+    var deploymentName = $"ghcp-logicapp-std-{environment}-{stamp}";
+    Common.WriteHeading($"[2/7] az deployment sub create --location {location}");
 
-    // Build a zip that includes the workflow folder, host.json, connections.json, parameters.json
-    // (excludes local.settings.json — runtime app settings come from Azure)
-    var zipPath = Path.Combine(Path.GetTempPath(), $"logicapp-{workflowAppName}-{DateTime.UtcNow:yyyyMMddHHmmss}.zip");
-    var zipCommand = $"cd '{standardDir}' && zip -r '{zipPath}' . -x 'local.settings.json' '.git/*' '.vscode/*' 'node_modules/*'";
-    var zipResult = Common.Run(shell, new[] { shellArg, zipCommand });
-    if (zipResult != 0)
+    var deploy = Common.Capture("az", new[]
     {
-        Common.WriteError("Failed to create deployment zip.");
-        return zipResult;
-    }
-    Console.WriteLine($"Created zip: {zipPath}");
-
-    // az webapp deploy uses Kudu zip-deploy and works correctly for Logic Apps Standard
-    var publishResult = Common.Run("az", new[]
-    {
-        "webapp", "deploy",
-        "--resource-group", resourceGroupName,
-        "--name", workflowAppName,
-        "--src-path", zipPath,
-        "--type", "zip",
-        "-o", "none"
+        "deployment", "sub", "create",
+        "--name", deploymentName,
+        "--location", location,
+        "--template-file", mainFile,
+        "--parameters", paramFile,
+        "-o", "json",
     });
-
-    File.Delete(zipPath);
-
-    if (publishResult != 0)
+    if (deploy.ExitCode != 0)
     {
-        Common.WriteError("Workflow content publish failed.");
-        return publishResult;
-    }
-}
-
-// ──────────────────────────────────────────────────────────────
-// Phase 4.5: Verify V2 connection authorization
-// ──────────────────────────────────────────────────────────────
-// V2 connections are created in an Unauthorized state and require a one-time
-// interactive OAuth sign-in before the workflow runtime will accept them.
-// We check the office365 connection and print the portal URL if not Connected.
-Common.WriteHeading("Verifying connection authorization");
-
-var subIdCmd = Common.Capture("az", new[] { "account", "show", "--query", "id", "-o", "tsv" });
-if (subIdCmd.ExitCode != 0)
-{
-    Common.WriteError("Could not retrieve subscription ID.");
-    return 1;
-}
-var subscriptionId = subIdCmd.Stdout.Trim();
-
-// Connections to verify: name -> display label
-var connectionsToCheck = new[] {
-    ($"con-office365-std-{environment}", "Office 365"),
-};
-
-bool allConnectionsAuthorized = true;
-foreach (var (connName, connLabel) in connectionsToCheck)
-{
-    var connCmd = Common.Capture("az", new[]
-    {
-        "rest", "--method", "get",
-        "--url", $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connName}?api-version=2018-07-01-preview",
-        "--query", "{statuses:properties.statuses,runtimeUrl:properties.connectionRuntimeUrl}",
-        "-o", "json"
-    });
-
-    bool authorized = false;
-    string runtimeUrl = null;
-    if (connCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(connCmd.Stdout))
-    {
-        try
-        {
-            using var connDoc = JsonDocument.Parse(connCmd.Stdout);
-            runtimeUrl = connDoc.RootElement.TryGetProperty("runtimeUrl", out var rt) ? rt.GetString() : null;
-            if (connDoc.RootElement.TryGetProperty("statuses", out var statuses) && statuses.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var s in statuses.EnumerateArray())
-                {
-                    if (s.TryGetProperty("status", out var st) &&
-                        string.Equals(st.GetString(), "Connected", StringComparison.OrdinalIgnoreCase))
-                    {
-                        authorized = true;
-                        break;
-                    }
-                }
-            }
-        }
-        catch { /* non-fatal */ }
+        Common.WriteError("Deployment failed.");
+        if (!string.IsNullOrWhiteSpace(deploy.Stderr)) Common.WriteError(deploy.Stderr);
+        if (!string.IsNullOrWhiteSpace(deploy.Stdout)) Console.WriteLine(deploy.Stdout);
+        return deploy.ExitCode;
     }
 
-    Console.WriteLine($"  {connLabel} ({connName}): {(authorized ? "Connected" : "NOT AUTHORIZED")}");
-    if (runtimeUrl != null) Console.WriteLine($"    Runtime URL: {runtimeUrl}");
-
-    if (!authorized)
-    {
-        allConnectionsAuthorized = false;
-        Console.WriteLine();
-        Common.WriteWarn($"⚠️  {connLabel} connection needs authorization.");
-        Console.WriteLine($"    1. Open  https://portal.azure.com/#@/resource/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Web/connections/{connName}/edit");
-        Console.WriteLine("    2. Click  'Authorize'  and sign in.");
-        Console.WriteLine("    3. Click  'Save'.");
-        Console.WriteLine();
-    }
-}
-
-if (!allConnectionsAuthorized)
-{
-    Common.WriteWarn("One or more connections need authorization. Authorize them in the portal (URLs above),");
-    Common.WriteWarn("then re-run this script. The runtime will not start until all connections are authorized.");
-    return 0;
-}
-
-// All connections authorized — restart so the runtime picks up any new app settings.
-Console.WriteLine();
-Console.WriteLine("All connections authorized. Restarting workflow app...");
-Common.Run("az", new[]
-{
-    "webapp", "restart",
-    "--resource-group", resourceGroupName,
-    "--name", workflowAppName,
-    "-o", "none"
-});
-
-// ──────────────────────────────────────────────────────────────
-// Phase 4.6: Wait for workflow runtime to be ready
-// ──────────────────────────────────────────────────────────────
-// After a zip deploy + restart the WS1 host can take 60-180s to load the
-// extension bundle, mount the content share, and register workflows.
-// Poll the management endpoint rather than using a fixed sleep.
-Common.WriteHeading("Waiting for workflow runtime to be ready...");
-var pollUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
-    $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
-    "/api/management/workflows?api-version=2024-04-01";
-var runtimeReady = false;
-for (int attempt = 1; attempt <= 18; attempt++) // 18 x 10s = 3 min
-{
-    System.Threading.Thread.Sleep(10000);
-    var probe = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", pollUri, "-o", "none" });
-    if (probe.ExitCode == 0)
-    {
-        runtimeReady = true;
-        Console.WriteLine($"  ✓ Runtime ready after ~{attempt * 10}s.");
-        break;
-    }
-    Console.Write($"  [{attempt,2}/18] starting");
-    for (int dot = 0; dot < (attempt % 4) + 1; dot++) Console.Write(".");
-    Console.WriteLine();
-}
-if (!runtimeReady)
-{
-    Common.WriteWarn("Runtime did not become ready within 3 minutes.");
-    Common.WriteWarn("The workflow may still be starting. Wait a moment and then invoke.");
-}
-
-// ──────────────────────────────────────────────────────────────
-// Phase 5: Retrieve trigger callback URL
-// ──────────────────────────────────────────────────────────────
-Common.WriteHeading("Retrieving trigger callback URL");
-
-var subId = subscriptionId; // already resolved in Phase 4.5
-
-var workflowName = "Approval"; // Folder name in standard/Approval/
-var triggerName = "When_an_approval_request_is_received";
-
-var uri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{resourceGroupName}" +
-          $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
-          $"/api/management/workflows/{workflowName}/triggers/{triggerName}" +
-          "/listCallbackUrl?api-version=2023-12-01";
-
-var restCmd = Common.Capture("az", new[] { "rest", "--method", "post", "--uri", uri });
-if (restCmd.ExitCode != 0 || string.IsNullOrWhiteSpace(restCmd.Stdout))
-{
-    Common.WriteWarn("Could not retrieve trigger callback URL.");
-    if (!string.IsNullOrWhiteSpace(restCmd.Stderr)) Common.WriteError(restCmd.Stderr);
-    Common.WriteWarn($"Is the workflow deployed? (rg={resourceGroupName}, site={workflowAppName}, workflow={workflowName})");
-}
-else
-{
     try
     {
-        using var urlDoc = JsonDocument.Parse(restCmd.Stdout);
-        var triggerUrl = urlDoc.RootElement.GetProperty("value").GetString();
-        Console.WriteLine();
-        Common.WriteSuccess("✅ Deployment complete!");
-        Console.WriteLine();
-        Console.WriteLine("Trigger URL:");
-        Console.WriteLine(triggerUrl);
-        Console.WriteLine();
-        Console.WriteLine("Test with:");
-        Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 500");
-        Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 2500");
+        using var doc = JsonDocument.Parse(deploy.Stdout);
+        var outputs = doc.RootElement.GetProperty("properties").GetProperty("outputs");
+        rgName                  = outputs.GetProperty("resourceGroupName").GetProperty("value").GetString();
+        workflowAppName         = outputs.GetProperty("workflowAppName").GetProperty("value").GetString();
+        office365ConnectionName = outputs.GetProperty("office365ConnectionName").GetProperty("value").GetString();
     }
     catch (Exception ex)
     {
-        Common.WriteWarn($"Could not parse trigger URL: {ex.Message}");
+        Common.WriteError($"Could not read deployment outputs: {ex.Message}");
+        return 1;
     }
+    Common.WriteSuccess($"Deployed: rg={rgName}, site={workflowAppName}, connection={office365ConnectionName}");
 }
 
-// ──────────────────────────────────────────────────────────────
-// Phase 6: Recent run history (smoke check)
-// ──────────────────────────────────────────────────────────────
-if (runtimeReady)
+// --- Phase 3: zip + deploy standard/ content -------------------------------
+int buildNumber = 0;
+if (skipContent)
 {
-    Common.WriteHeading("Recent workflow runs");
-    var runsUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
-        $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
-        $"/api/management/workflows/{workflowName}/runs?api-version=2024-04-01&$top=5";
-    var runsCmd = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", runsUri, "-o", "json" });
-    if (runsCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(runsCmd.Stdout))
+    Common.WriteWarn("[3/7] --skip-content set; skipping zip-deploy.");
+}
+else
+{
+    // Increment build counter and stamp it into the workflow description so
+    // we can verify the runtime picked up our edit.
+    buildNumber = ReadBuildNumber(buildVersionFile) + 1;
+    File.WriteAllText(buildVersionFile, buildNumber.ToString());
+    StampBuildIntoWorkflow(Path.Combine(standardDir, "Approval", "workflow.json"), buildNumber);
+
+    Common.WriteHeading($"[3/7] Packaging {standardDir} → {zipPath}  (build #{buildNumber})");
+    if (File.Exists(zipPath)) File.Delete(zipPath);
+    ZipFile.CreateFromDirectory(standardDir, zipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+
+    // Wait for the SCM endpoint to be ready before zip-deploying. On first
+    // deploy the site was just created by Bicep and the worker/Kudu may not
+    // be listening yet — hitting it too early returns HTTP 502.
+    Common.WriteHeading($"      Waiting for SCM endpoint to be ready...");
+    for (var attempt = 1; attempt <= 18; attempt++)
+    {
+        var probe = Common.Capture("az", new[]
+        {
+            "webapp", "show",
+            "--resource-group", rgName,
+            "--name", workflowAppName,
+            "--query", "state",
+            "-o", "tsv",
+        });
+        var state = probe.Stdout?.Trim();
+        if (probe.ExitCode == 0 && string.Equals(state, "Running", StringComparison.OrdinalIgnoreCase))
+        {
+            // Site reports Running — give SCM a few more seconds on first deploy
+            if (attempt == 1) System.Threading.Thread.Sleep(5_000);
+            Common.WriteSuccess($"      Site state: {state}");
+            break;
+        }
+        Console.WriteLine($"      [attempt {attempt}/18] site state={state ?? "unknown"}, waiting...");
+        System.Threading.Thread.Sleep(10_000);
+        if (attempt == 18)
+        {
+            Common.WriteWarn("Site did not reach Running state after 3 minutes — attempting zip deploy anyway.");
+        }
+    }
+
+    Common.WriteHeading($"      az webapp deploy --type zip --src-path {Path.GetFileName(zipPath)}");
+    var publish = Common.Run("az", new[]
+    {
+        "webapp", "deploy",
+        "--resource-group", rgName,
+        "--name", workflowAppName,
+        "--src-path", zipPath,
+        "--type", "zip",
+    });
+    if (publish != 0) { Common.WriteError("Zip-deploy failed."); return publish; }
+    Common.WriteSuccess($"Workflow content deployed (build #{buildNumber}).");
+}
+
+// --- Phase 4: workflow runtime health -------------------------------------
+// This catches schema errors in workflow.json (e.g. wrong key shape, hyphenated
+// Switch case object keys, V1 'name' vs Standard 'referenceName') BEFORE we
+// hand the user a trigger URL that would only fail at invoke time.
+var subId = GetSubscriptionId();
+if (subId is null) return 1;
+
+Common.WriteHeading("[4/7] Checking workflow runtime health");
+var healthUri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{rgName}" +
+                $"/providers/Microsoft.Web/sites/{workflowAppName}" +
+                $"/hostruntime/runtime/webhooks/workflow/api/management/workflows/Approval" +
+                $"?api-version=2024-04-01";
+
+string healthState = null;
+string healthError = null;
+for (var attempt = 1; attempt <= 18; attempt++)
+{
+    var h = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", healthUri });
+    if (h.ExitCode == 0 && !string.IsNullOrWhiteSpace(h.Stdout))
     {
         try
         {
-            using var runsDoc = JsonDocument.Parse(runsCmd.Stdout);
-            var runs = runsDoc.RootElement.GetProperty("value");
-            if (runs.GetArrayLength() == 0)
+            using var doc = JsonDocument.Parse(h.Stdout);
+            if (doc.RootElement.TryGetProperty("health", out var health))
             {
-                Console.WriteLine("  No runs yet — invoke the workflow to create the first run.");
-            }
-            else
-            {
-                Console.WriteLine($"  {"Status",-12}  {"Start time",-26}  Run ID");
-                Console.WriteLine($"  {new string('-', 12)}  {new string('-', 26)}  {new string('-', 34)}");
-                foreach (var run in runs.EnumerateArray())
-                {
-                    var props = run.GetProperty("properties");
-                    var runStatus = props.TryGetProperty("status", out var s) ? s.GetString() : "?";
-                    var startTime = props.TryGetProperty("startTime", out var t) ? t.GetString() : "";
-                    var runId = run.GetProperty("name").GetString();
-                    var prev = Console.ForegroundColor;
-                    Console.ForegroundColor = runStatus == "Succeeded" ? ConsoleColor.Green
-                                            : runStatus == "Failed"    ? ConsoleColor.Red
-                                            : ConsoleColor.Yellow;
-                    Console.Write($"  {runStatus,-12}");
-                    Console.ForegroundColor = prev;
-                    Console.WriteLine($"  {startTime,-26}  {runId}");
-
-                    // For any failed run, print action-level status so the cause is immediately visible.
-                    if (runStatus == "Failed")
-                    {
-                        var actionsUri = $"https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}" +
-                            $"/providers/Microsoft.Web/sites/{workflowAppName}/hostruntime/runtime/webhooks/workflow" +
-                            $"/api/management/workflows/{workflowName}/runs/{runId}/actions?api-version=2024-04-01";
-                        var actionsCmd = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", actionsUri, "-o", "json" });
-                        if (actionsCmd.ExitCode == 0 && !string.IsNullOrWhiteSpace(actionsCmd.Stdout))
-                        {
-                            try
-                            {
-                                using var actDoc = JsonDocument.Parse(actionsCmd.Stdout);
-                                foreach (var action in actDoc.RootElement.GetProperty("value").EnumerateArray())
-                                {
-                                    var ap = action.GetProperty("properties");
-                                    var aStatus = ap.TryGetProperty("status", out var as_) ? as_.GetString() : "?";
-                                    var aCode = ap.TryGetProperty("code", out var ac) ? ac.GetString() : "";
-                                    var aName = action.GetProperty("name").GetString();
-                                    if (aStatus == "Failed")
-                                    {
-                                        Console.ForegroundColor = ConsoleColor.Red;
-                                        Console.Write($"    ✗ {aName,-40}");
-                                        Console.ForegroundColor = prev;
-                                        Console.WriteLine($"  {aCode}");
-                                        if (ap.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.Object)
-                                            Console.WriteLine($"      {err}");
-                                    }
-                                }
-                            }
-                            catch { /* non-fatal */ }
-                        }
-                    }
-                }
+                healthState = health.TryGetProperty("state", out var s) ? s.GetString() : null;
+                if (health.TryGetProperty("errorMessage", out var em))
+                    healthError = em.ToString();
+                if (!string.IsNullOrEmpty(healthState)) break;
             }
         }
-        catch { /* non-fatal */ }
+        catch { /* runtime still starting */ }
     }
+    Console.Write($"  [attempt {attempt}/18] runtime starting...");
+    System.Threading.Thread.Sleep(10_000);
+    Console.WriteLine();
+}
+
+if (string.Equals(healthState, "Healthy", StringComparison.OrdinalIgnoreCase))
+{
+    Common.WriteSuccess("Workflow is healthy.");
+    if (buildNumber > 0) Common.WriteSuccess($"  === Build #{buildNumber} loaded ===");
+}
+else if (string.Equals(healthState, "Unhealthy", StringComparison.OrdinalIgnoreCase))
+{
+    Common.WriteError($"Workflow loaded but is Unhealthy. Schema validation failed:");
+    if (!string.IsNullOrEmpty(healthError)) Common.WriteError("  " + healthError);
+    if (buildNumber > 0) Common.WriteError($"  === Build #{buildNumber} REJECTED ===");
+    Common.WriteWarn("Common Standard gotchas:");
+    Common.WriteWarn("  - host.connection uses 'referenceName', NOT 'name' (Consumption uses 'name').");
+    Common.WriteWarn("  - Switch case object keys must be valid identifiers (no hyphens).");
+    Common.WriteWarn("    Use 'Case_escalation_denied' as the key; the 'case' value can be 'escalation-denied'.");
+    Common.WriteWarn("  - $connections workflow parameter must be removed (it's Consumption-only).");
+    return 1;
+}
+else
+{
+    Common.WriteWarn($"Could not determine workflow health after 3 minutes (state={healthState ?? "unknown"}).");
+    Common.WriteWarn("Continuing anyway — the runtime may still be starting.");
+}
+
+// --- Phase 5: fetch trigger URL via hostruntime ---------------------------
+// This succeeds independent of connection authorization — the URL is just a
+// SAS-signed callback and is valid as soon as the workflow loads.
+Common.WriteHeading("[5/7] Fetching trigger URL (hostruntime path)");
+var callbackUri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{rgName}" +
+                  $"/providers/Microsoft.Web/sites/{workflowAppName}" +
+                  $"/hostruntime/runtime/webhooks/workflow/api/management/workflows/Approval" +
+                  $"/triggers/When_an_approval_request_is_received/listCallbackUrl" +
+                  $"?api-version=2024-04-01";
+
+string triggerUrl = null;
+for (var attempt = 1; attempt <= 6; attempt++)
+{
+    var cb = Common.Capture("az", new[] { "rest", "--method", "post", "--uri", callbackUri });
+    if (cb.ExitCode == 0 && !string.IsNullOrWhiteSpace(cb.Stdout))
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(cb.Stdout);
+            triggerUrl = doc.RootElement.GetProperty("value").GetString();
+            if (!string.IsNullOrWhiteSpace(triggerUrl)) break;
+        }
+        catch { /* try again */ }
+    }
+    if (attempt < 6) System.Threading.Thread.Sleep(5_000);
+}
+
+if (string.IsNullOrWhiteSpace(triggerUrl))
+{
+    Common.WriteError("Could not retrieve trigger URL. Re-run the script in a minute.");
+    return 1;
+}
+Common.WriteSuccess("Trigger URL:");
+Console.WriteLine(triggerUrl);
+
+// --- Phase 6: connection authorization advisory (informational only) ------
+Common.WriteHeading("[6/7] Office 365 connection authorization");
+var connectionResourceId = $"/subscriptions/{subId}/resourceGroups/{rgName}/providers/Microsoft.Web/connections/{office365ConnectionName}";
+var probe = Common.Capture("az", new[]
+{
+    "resource", "show",
+    "--ids", connectionResourceId,
+    "--api-version", "2016-06-01",
+    "-o", "json",
+});
+
+var portalUrl = $"https://portal.azure.com/#@/resource/subscriptions/{subId}/resourceGroups/{rgName}/providers/Microsoft.Web/connections/{office365ConnectionName}/edit";
+var isConnected = false;
+if (probe.ExitCode == 0 && !string.IsNullOrWhiteSpace(probe.Stdout))
+{
+    try
+    {
+        using var doc = JsonDocument.Parse(probe.Stdout);
+        if (doc.RootElement.GetProperty("properties").TryGetProperty("statuses", out var statuses) &&
+            statuses.ValueKind == JsonValueKind.Array)
+        {
+            isConnected = statuses.EnumerateArray()
+                .Any(s => s.TryGetProperty("status", out var st) &&
+                          string.Equals(st.GetString(), "Connected", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+    catch { /* treat as unauthorized */ }
+}
+
+if (isConnected)
+{
+    Common.WriteSuccess("V2 connection is authorized (Connected). Invokes will reach Office 365.");
+}
+else
+{
+    Common.WriteWarn("V2 connection is NOT yet authorized — this is expected on first deploy.");
+    Common.WriteWarn("OAuth consent is a one-time human gate; it cannot be automated.");
+    Common.WriteWarn("");
+    Common.WriteWarn("  → Below-threshold invokes (e.g. --amount 100) will succeed without auth.");
+    Common.WriteWarn("  → Above-threshold invokes need this URL clicked once:");
+    Common.WriteWarn($"     {portalUrl}");
+    Common.WriteWarn("     Click Authorize → sign in → Save. Then no further redeploy is needed.");
+}
+
+Console.WriteLine();
+Console.WriteLine("Invoke (sample):");
+Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 100");
+Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 2500");
+Console.WriteLine($"  dotnet script scripts/invoke-standard.csx -- --environment {environment} --amount 15000");
+
+// --- Phase 7: run history smoke check --------------------------------------
+Common.WriteHeading("[7/7] Recent run history (last 5)");
+var runsUri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{rgName}" +
+              $"/providers/Microsoft.Web/sites/{workflowAppName}" +
+              $"/hostruntime/runtime/webhooks/workflow/api/management/workflows/Approval/runs" +
+              $"?api-version=2024-04-01&%24top=5";
+
+var runs = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", runsUri });
+if (runs.ExitCode != 0 || string.IsNullOrWhiteSpace(runs.Stdout))
+{
+    Common.WriteWarn("No run history yet (workflow not yet invoked).");
+    return 0;
+}
+
+try
+{
+    using var doc = JsonDocument.Parse(runs.Stdout);
+    if (!doc.RootElement.TryGetProperty("value", out var arr) || arr.GetArrayLength() == 0)
+    {
+        Common.WriteWarn("No run history yet.");
+        return 0;
+    }
+    foreach (var run in arr.EnumerateArray())
+    {
+        var name   = run.GetProperty("name").GetString();
+        var status = run.GetProperty("properties").GetProperty("status").GetString();
+        var start  = run.GetProperty("properties").TryGetProperty("startTime", out var s) ? s.GetString() : "";
+        switch (status)
+        {
+            case "Succeeded": Common.WriteSuccess($"  {start}  {status,-10}  {name}"); break;
+            case "Failed":    Common.WriteError(  $"  {start}  {status,-10}  {name}"); break;
+            default:          Common.WriteWarn(   $"  {start}  {status,-10}  {name}"); break;
+        }
+
+        if (status != "Failed") continue;
+
+        // For failed runs, list failed actions + error codes
+        var actionsUri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{rgName}" +
+                         $"/providers/Microsoft.Web/sites/{workflowAppName}" +
+                         $"/hostruntime/runtime/webhooks/workflow/api/management/workflows/Approval/runs/{name}/actions" +
+                         $"?api-version=2024-04-01";
+        var acts = Common.Capture("az", new[] { "rest", "--method", "get", "--uri", actionsUri });
+        if (acts.ExitCode != 0 || string.IsNullOrWhiteSpace(acts.Stdout)) continue;
+        try
+        {
+            using var actDoc = JsonDocument.Parse(acts.Stdout);
+            if (!actDoc.RootElement.TryGetProperty("value", out var actArr)) continue;
+            foreach (var a in actArr.EnumerateArray())
+            {
+                var aStatus = a.GetProperty("properties").GetProperty("status").GetString();
+                if (aStatus != "Failed") continue;
+                var aName = a.GetProperty("name").GetString();
+                var code = a.GetProperty("properties").TryGetProperty("code", out var c) ? c.GetString() : "";
+                Common.WriteError($"      ↳ failed action: {aName}  code={code}");
+            }
+        }
+        catch { /* best-effort diagnostics */ }
+    }
+}
+catch (Exception ex)
+{
+    Common.WriteWarn($"Could not parse run history: {ex.Message}");
 }
 
 return 0;
+
+string GetSubscriptionId()
+{
+    var r = Common.Capture("az", new[] { "account", "show", "--query", "id", "-o", "tsv" });
+    if (r.ExitCode != 0)
+    {
+        Common.WriteError("az account show failed. Run 'az login' first.");
+        if (!string.IsNullOrWhiteSpace(r.Stderr)) Common.WriteError(r.Stderr);
+        return null;
+    }
+    return r.Stdout.Trim();
+}
+
+int ReadBuildNumber(string path)
+{
+    try
+    {
+        if (File.Exists(path) && int.TryParse(File.ReadAllText(path).Trim(), out var n))
+            return n;
+    }
+    catch { /* fall through */ }
+    return 0;
+}
+
+void StampBuildIntoWorkflow(string workflowPath, int buildNumber)
+{
+    // Inserts/updates "definition.description" with a build stamp. This field
+    // is non-functional at runtime — purely a sentinel so the user can confirm
+    // their edit reached the runtime (visible via the workflow GET endpoint).
+    try
+    {
+        var raw = File.ReadAllText(workflowPath);
+        using var doc = JsonDocument.Parse(raw);
+        var root = doc.RootElement;
+        var stamp = $"build #{buildNumber} @ {DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}";
+
+        // Walk the tree manually so we preserve formatting on the rest of the file.
+        // Simplest approach: serialize via JsonNode-equivalent (Utf8JsonWriter).
+        using var ms = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            foreach (var prop in root.EnumerateObject())
+            {
+                if (prop.NameEquals("definition"))
+                {
+                    writer.WritePropertyName("definition");
+                    writer.WriteStartObject();
+                    var wroteDescription = false;
+                    foreach (var dprop in prop.Value.EnumerateObject())
+                    {
+                        if (dprop.NameEquals("description"))
+                        {
+                            writer.WriteString("description", stamp);
+                            wroteDescription = true;
+                        }
+                        else
+                        {
+                            dprop.WriteTo(writer);
+                        }
+                    }
+                    if (!wroteDescription) writer.WriteString("description", stamp);
+                    writer.WriteEndObject();
+                }
+                else
+                {
+                    prop.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+        }
+        File.WriteAllBytes(workflowPath, ms.ToArray());
+    }
+    catch (Exception ex)
+    {
+        Common.WriteWarn($"Could not stamp build number into workflow.json: {ex.Message}");
+    }
+}

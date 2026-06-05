@@ -1,15 +1,14 @@
 #load "lib/common.csx"
-// Cross-platform script to POST a sample approval request to a Standard Logic App's HTTP trigger.
-// (For Consumption Logic Apps, use scripts/invoke.csx instead.)
+// POSTs a sample approval request to the Logic Apps Standard workflow.
 //
 // Usage:
 //   dotnet script scripts/invoke-standard.csx -- [--environment dev|prod] [--amount 2500]
-//                                                 [--trigger-url '<url>'] [--request-id REQ-1]
-//                                                 [--requester foo@bar] [--description "..."]
-//                                                 [--trigger-name When_an_approval_request_is_received]
+//                                                  [--trigger-url '<url>'] [--request-id REQ-1]
+//                                                  [--requester foo@bar] [--description "..."]
+//                                                  [--timeout <seconds>]   default: 300
 //
-// If --trigger-url is omitted, the script asks Azure for the workflow's callback URL,
-// avoiding the unquoted '&' pitfall when copying URLs on the command line.
+// If --trigger-url is omitted, the script fetches the callback URL via the
+// hostruntime management API (Standard path), not the Consumption path.
 
 using System;
 using System.Collections.Generic;
@@ -24,7 +23,7 @@ var amount = int.Parse(Common.Get(parsed, "amount", "2500"));
 var requestId = Common.Get(parsed, "request-id", $"REQ-{Random.Shared.Next(1000, 9999)}");
 var requester = Common.Get(parsed, "requester", "alice@contoso.com");
 var description = Common.Get(parsed, "description", "Demo approval request");
-var triggerName = Common.Get(parsed, "trigger-name", "When_an_approval_request_is_received");
+var timeoutSeconds = int.Parse(Common.Get(parsed, "timeout", "300"));
 string triggerUrl = parsed.TryGetValue("trigger-url", out var u) ? u : null;
 
 if (environment != "dev" && environment != "prod")
@@ -35,7 +34,7 @@ if (environment != "dev" && environment != "prod")
 
 if (string.IsNullOrEmpty(triggerUrl))
 {
-    triggerUrl = FetchTriggerUrl(environment, triggerName);
+    triggerUrl = FetchTriggerUrl(environment);
     if (triggerUrl is null) return 1;
 }
 
@@ -55,12 +54,17 @@ var body = JsonSerializer.Serialize(new
     description,
 });
 
+if (timeoutSeconds < 90)
+    Common.WriteWarn($"--timeout {timeoutSeconds}s is under the 90 s HTTP response window — the workflow must complete (or time out) before then to return a synchronous response.");
+if (timeoutSeconds >= 90)
+    Common.WriteWarn($"Waiting up to {timeoutSeconds}s for a synchronous response. If RequestApproval has a limit.timeout < {timeoutSeconds}s it will time out and HandleFailure should return HTTP 502.");
+
 Common.WriteHeading($"POST {triggerUrl}");
 Console.WriteLine(body);
 
 try
 {
-    using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
     using var request = new HttpRequestMessage(HttpMethod.Post, triggerUrl)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -82,10 +86,15 @@ try
     var hints = new Dictionary<int, string>
     {
         [401] = "Hint: SAS signature mismatch. If you passed --trigger-url, wrap it in single quotes or omit it to let the script fetch it.",
-        [403] = "Hint: Access denied. Check IP restrictions on the workflow app.",
+        [403] = "Hint: 403 — likely the V2 Office 365 connection is not yet authorized.\n" +
+                "  Open the Azure portal: Logic App → API connections → con-office365-std-{env} → Edit → Authorize → Save.\n" +
+                "  Below-threshold invokes (amount <= threshold) do not use the connector and should succeed.",
         [404] = "Hint: Workflow or trigger not found. Confirm the workflow is deployed and enabled.",
         [500] = "Hint: The run started but an action failed, often because the Office 365 connection is not authorized in the portal.",
-        [502] = "Hint: 502 means a downstream connector returned an error. Usually the Office 365 connection is not authorized. Open the Logic App (Standard) in the portal, then Workflows → Approval → Overview → Edit JSON → connections → office365 → Authorize. Or run: dotnet script scripts/invoke-standard.csx -- --amount 100 to skip the connector.",
+        [502] = "HTTP 502 — two possible causes:\n" +
+                "  (a) HandleFailure path triggered: RequestApproval timed out or failed (expected in the error-handling demo).\n" +
+                "  (b) Office 365 connection not authorized: open the portal → API connections → Edit → Authorize.\n" +
+                "  To demo the timeout path: set RequestApproval limit.timeout to PT1M, redeploy, then run with --timeout 90.",
     };
     if (hints.TryGetValue(status, out var hint)) Common.WriteWarn(hint);
     return 1;
@@ -97,13 +106,13 @@ catch (Exception ex)
     return 1;
 }
 
-string FetchTriggerUrl(string env, string trigger)
+string FetchTriggerUrl(string env)
 {
     var rg = $"rg-ghcp-logicapp-{env}";
     var siteName = $"la-approval-std-{env}";
-    var workflowName = "Approval"; // Folder name in standard/Approval/
+    var triggerName = "When_an_approval_request_is_received";
 
-    Console.WriteLine($"Fetching trigger URL for workflow '{workflowName}' in site '{siteName}' (rg: {rg})...");
+    Console.WriteLine($"Fetching trigger URL for {siteName} in {rg}...");
 
     var sub = Common.Capture("az", new[] { "account", "show", "--query", "id", "-o", "tsv" });
     if (sub.ExitCode != 0)
@@ -114,16 +123,18 @@ string FetchTriggerUrl(string env, string trigger)
     }
     var subId = sub.Stdout.Trim();
 
-    // Standard Logic Apps use Microsoft.Web/sites with hostruntime API
+    // Standard uses the hostruntime management path — NOT the Consumption
+    // Microsoft.Logic/workflows path (which returns 404 for Standard sites).
     var uri = $"https://management.azure.com/subscriptions/{subId}/resourceGroups/{rg}" +
-              $"/providers/Microsoft.Web/sites/{siteName}/hostruntime/runtime/webhooks/workflow" +
-              $"/api/management/workflows/{workflowName}/triggers/{trigger}" +
-              "/listCallbackUrl?api-version=2023-12-01";
+              $"/providers/Microsoft.Web/sites/{siteName}" +
+              $"/hostruntime/runtime/webhooks/workflow/api/management/workflows/Approval" +
+              $"/triggers/{triggerName}/listCallbackUrl" +
+              "?api-version=2024-04-01";
 
     var rest = Common.Capture("az", new[] { "rest", "--method", "post", "--uri", uri });
     if (rest.ExitCode != 0 || string.IsNullOrWhiteSpace(rest.Stdout))
     {
-        Common.WriteError($"Could not retrieve trigger URL. Is the workflow deployed? (rg={rg}, site={siteName}, workflow={workflowName})");
+        Common.WriteError($"Could not retrieve trigger URL. Is the workflow deployed? (rg={rg}, site={siteName})");
         if (!string.IsNullOrWhiteSpace(rest.Stderr)) Common.WriteError(rest.Stderr);
         return null;
     }
