@@ -182,8 +182,8 @@ dotnet script scripts/deploy.csx -- --environment dev
 | 01 | Explain & document | Mermaid + plain-English from JSON |
 | 02 | Refactor: extract sub-flows | Copilot reasons over `Scope`/`runAfter` |
 | 03 | Add error handling | `retryPolicy`, failure scopes, dead-letter |
-| 04 | Add an escalation branch | Cross-file IaC consistency — one business rule, five files, four outcomes |
-| 05 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections, local dev |
+| 04 | Add an escalation tier | Cross-file IaC consistency — one business rule, five files, four outcomes |
+| 05 | Migrate Consumption → Standard | Cross-cutting refactor across IaC, schema, connections; Azure-only |
 | 06 | Externalize config to App Settings | Standard-exclusive: `@appsetting()` in workflow expressions; portal proof |
 
 Scenarios are numbered in presentation order. See [`DEMO.md`](./DEMO.md) for

@@ -29,7 +29,7 @@ The scenarios are numbered in presentation order — `01` through `06`.
 | 1 | **01 Explain & document** | Open with comprehension. Sets context, surfaces issues that motivate scenarios 03 / 04. |
 | 2 | **02 Refactor: extract sub-flows** | First real edit. Shows Copilot navigates Logic Apps schema (`Scope`, `runAfter`) and the Bicep mirror in one pass. |
 | 3 | **03 Add error handling** | Harden the workflow. Strong "before/after" failure-mode story. |
-| 4 | **04 Escalation branch** | Business-rule change. Cross-file feature spanning workflow + 4 Bicep files, with all four outcomes visible in the console — no UI side effects needed. |
+| 4 | **04 Add an escalation tier** | Business-rule change. Cross-file feature spanning workflow + 4 Bicep files, with all four outcomes visible in the console — no UI side effects needed. |
 | 5 | **05 Migrate Consumption → Standard** | **Climax.** The single biggest cross-cutting change Copilot can do for you here — different resources, different layout, different connection model — preserving the escalation logic from Beat 4 byte-for-byte. |
 | 6 | **06 Externalize config to App Settings** | **Landing beat.** Shows a Standard-exclusive capability: business rules in App Settings instead of code. Portal proof: threshold is gone from the JSON, visible in Environment variables. |
 
@@ -141,7 +141,7 @@ the graceful 502.
 `retryPolicy` JSON shape are the kinds of things people get subtly wrong by
 hand. The dead-letter pattern transfers to other workflows.
 
-### Beat 4 — Scenario 04: Escalation branch (business-rule change)
+### Beat 4 — Scenario 04: Add an escalation tier (business-rule change)
 
 > **Say this:** "The CFO wants a sign-off above $10K. I shouldn't need to
 > know Logic Apps internals to ship that. Watch one feature request ripple
