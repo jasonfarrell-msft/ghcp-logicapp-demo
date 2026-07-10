@@ -49,7 +49,15 @@ There is **one** approver and **one** threshold. The console (via `invoke.csx`) 
 
 ## Prompt 2 — Add escalation logic to the workflow (copy/paste)
 
-> Update `infra/workflows/approval.workflow.json` only. Assume `escalationApproverEmail`, `escalationThreshold`, and `skipApproval` variables are already initialized at the root level (added by a previous step).
+> Update `infra/workflows/approval.workflow.json` only.
+>
+> Add four `InitializeVariable` actions to the root-level init chain (after `Initialize_responseStatus`):
+> 1. `Initialize_escalationApproverEmail` (string, value `"escalation@contoso.com"`) — runAfter `Initialize_responseStatus`.
+> 2. `Initialize_escalationThreshold` (integer, value `10000`) — runAfter `Initialize_escalationApproverEmail`.
+> 3. `Initialize_skipApproval` (boolean, value `false`) — runAfter `Initialize_escalationThreshold`.
+> 4. `Initialize_decision` (string, value `""`) — runAfter `Initialize_skipApproval`.
+>
+> Update `RequestApproval`'s `runAfter` to point to `Initialize_decision` instead of `Initialize_responseStatus`.
 >
 > Inside the `RequestApproval` scope, before `Check_amount_against_threshold`:
 > 1. Add `Check_escalation_threshold` (type `If`): expression `amount > escalationThreshold`.
