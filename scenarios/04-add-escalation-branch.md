@@ -46,8 +46,6 @@ There is **one** approver and **one** threshold. The console (via `invoke.csx`) 
 > In `infra/parameters/dev.bicepparam`: add `param escalationApproverEmail = 'escalation@contoso.com'` and `param escalationThreshold = 10000`.
 >
 > In `infra/parameters/prod.bicepparam`: add `param escalationApproverEmail = 'cfo-approvals@contoso.com'` and `param escalationThreshold = 25000`.
->
-> No changes to `infra/workflows/approval.workflow.json`. Use the simplest valid approach, no alternatives.
 
 ## Prompt 2 — Add escalation logic to the workflow (copy/paste)
 
